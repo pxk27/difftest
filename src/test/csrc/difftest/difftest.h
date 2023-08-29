@@ -110,6 +110,26 @@ typedef struct __attribute__((packed)) {
 } arch_csr_state_t;
 
 typedef struct __attribute__((packed)) {
+   uint64_t virtMode;
+   uint64_t mtval2;
+   uint64_t mtinst;
+   uint64_t hstatus;
+   uint64_t hideleg;
+   uint64_t hedeleg;
+   uint64_t hcounteren;
+   uint64_t htval;
+   uint64_t htinst;
+   uint64_t hgatp;
+   uint64_t vsstatus;
+   uint64_t vstvec;
+   uint64_t vsepc;
+   uint64_t vscause;
+   uint64_t vstval;
+   uint64_t vsatp;
+   uint64_t vsscratch;
+} h_csr_state_t
+
+typedef struct __attribute__((packed)) {
   uint64_t debugMode;
   uint64_t dcsr;
   uint64_t dpc;
@@ -117,11 +137,19 @@ typedef struct __attribute__((packed)) {
   uint64_t dscratch1;
 } debug_mode_t;
 
-#ifndef DEBUG_MODE_DIFF
-const int DIFFTEST_NR_REG = (sizeof(arch_reg_state_t) + sizeof(arch_csr_state_t)) / sizeof(uint64_t);
+#ifdef H_MODE_DIFF
+#define DIFFTEST_NR_H_REG sizeof(h_csr_state_t/sizeof(uint64_t))
 #else
-const int DIFFTEST_NR_REG = (sizeof(arch_reg_state_t) + sizeof(arch_csr_state_t) + sizeof(debug_mode_t)) / sizeof(uint64_t);
+#define DIFFTEST_NR_H_REG 0
 #endif
+
+#ifdef DEBUG_MODE_DIFF
+#define DIFFTEST_NR_DMODE_REG sizeof(debug_mode_t) / sizeof(uint64_t);
+#else
+#define DIFFTEST_NR_DMODE_REG 0
+#endif
+
+const int DIFFTEST_NR_REG = (sizeof(arch_reg_state_t) + sizeof(arch_csr_state_t)) / sizeof(uint64_t) + DIFFTEST_NR_DMODE_REG + DIFFTEST_NR_H_REG;
 
 typedef struct {
   uint8_t  resp = 0;
@@ -158,6 +186,9 @@ typedef struct {
   uint64_t satp;
   uint64_t vpn;
   uint64_t ppn;
+  uint64_t vsatp;
+  uint64_t hgatp;
+  uint64_t s2xlate;
 } l1tlb_event_t;
 
 typedef struct {
@@ -166,9 +197,18 @@ typedef struct {
   uint64_t satp;
   uint64_t vpn;
   uint64_t ppn[8];
-  uint8_t perm;
-  uint8_t level;
-  uint8_t pf;
+  uint8_t  pteidx[8];
+  uint8_t  perm;
+  uint8_t  level;
+  uint8_t  pf;
+  uint64_t vsatp;
+  uint64_t hgatp;
+  uint64_t gvpn;
+  uint8_t  g_perm;
+  uint8_t  g_level;
+  uint64_t s2ppn;
+  uint8_t  gpf;
+  uint8_t  s2xlate;
 } l2tlb_event_t;
 
 typedef struct {
@@ -223,6 +263,7 @@ typedef struct {
   instr_commit_t    commit[DIFFTEST_COMMIT_WIDTH];
   arch_reg_state_t  regs;
   arch_csr_state_t  csr;
+  arch_csr_state_t  hcsr;
   debug_mode_t      dmregs;
   sbuffer_state_t   sbuffer[DIFFTEST_SBUFFER_RESP_WIDTH];
   store_event_t     store[DIFFTEST_STORE_WIDTH];
@@ -336,6 +377,9 @@ public:
   }
   inline arch_csr_state_t *get_csr_state() {
     return &(dut.csr);
+  }
+  inline h_csr_state_t *get_h_csr_state() {
+    return &(dut.hcsr);
   }
   inline arch_reg_state_t *get_arch_reg_state() {
     return &(dut.regs);

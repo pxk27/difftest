@@ -28,6 +28,7 @@ class DifftestTop extends Module {
     var difftest_basic_trap_event = Module(new DifftestBasicTrapEvent);
     var difftest_trap_event = Module(new DifftestTrapEvent);
     var difftest_csr_state = Module(new DifftestCSRState);
+    val difftest_csr_state = Module(new DifftestCSRState);
     var difftest_debug_mode = Module(new DifftestDebugMode);
     var difftest_int_writeback = Module(new DifftestIntWriteback);
     var difftest_fp_writeback = Module(new DifftestFpWriteback);

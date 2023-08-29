@@ -102,6 +102,27 @@ class DiffCSRStateIO extends DifftestBundle {
   val medeleg = Input(UInt(64.W))
 }
 
+class DiffHCSRStateIO extends DifftestBundle {
+  val virtMode = Input(Bool)
+  val mtval2 = Input(UInt(64.W))
+  val mtinst = Input(UInt(64.W))
+  val hstatus = Input(UInt(64.W))
+  val hideleg = Input(UInt(64.W))
+  val hedeleg = Input(UInt(64.W))
+  val hcounteren = Input(UInt(64.W))
+  val htval = Input(UInt(64.W))
+  val htinst = Input(UInt(64.W))
+  val hgatp = Input(UInt(64.W))
+  val vsstatus = Input(UInt(64.W))
+  val vstvec = Input(UInt(64.W))
+  val vsepc = Input(UInt(64.W))
+  val vscause = Input(UInt(64.W))
+  val vstval = Input(UInt(64.W))
+  val vsatp = Input(UInt(64.W))
+  val vsscratch = Input(UInt(64.W))
+}
+
+
 class DiffDebugModeIO extends DifftestBundle {
   val debugMode = Input(Bool())
   val dcsr = Input(UInt(64.W))
@@ -166,6 +187,9 @@ class DiffL1TLBEventIO extends DifftestBundle with DifftestWithIndex {
   val satp = Input(UInt(64.W))
   val vpn = Input(UInt(64.W))
   val ppn = Input(UInt(64.W))
+  val vsatp = Input(UInt(64.W))
+  val hgatp = Input(UInt(64.W))
+  val s2xlate = Input(UInt(2.W))
 }
 
 class DiffL2TLBEventIO extends DifftestBundle with DifftestWithIndex {
@@ -177,6 +201,15 @@ class DiffL2TLBEventIO extends DifftestBundle with DifftestWithIndex {
   val perm = Input(UInt(8.W))
   val level = Input(UInt(8.W))
   val pf = Input(Bool())
+  val pteidx = Input(Vec(8, Bool()))
+  val vsatp = Input(UInt(64.W))
+  val hgatp = Input(UInt(64.W))
+  val gvpn = Input(64.W)
+  val g_perm = Input(UInt(8.W))
+  val g_level = Input(UInt(8.W))
+  val s2ppn = Input(UInt(64.W))
+  val gpf = Input(Bool())
+  val s2xlate = Input(2.W)
 }
 
 class DiffRefillEventIO extends DifftestBundle {
@@ -299,6 +332,7 @@ class DifftestInstrCommit extends DifftestBaseModule(new DiffInstrCommitIO)
 class DifftestBasicTrapEvent extends DifftestBaseModule(new DiffBasicTrapEventIO)
 class DifftestTrapEvent extends DifftestBaseModule(new DiffTrapEventIO)
 class DifftestCSRState extends DifftestBaseModule(new DiffCSRStateIO)
+class DifftestHCSRState extends DifftestBaseModule(new DiffHCSRStateIO)
 class DifftestDebugMode extends DifftestBaseModule(new DiffDebugModeIO)
 class DifftestIntWriteback extends DifftestBaseModule(new DiffIntWritebackIO)
 class DifftestFpWriteback extends DifftestBaseModule(new DiffFpWritebackIO)

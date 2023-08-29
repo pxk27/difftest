@@ -38,7 +38,13 @@ static const char *reg_name[DIFFTEST_NR_REG+1] = {
   "mtval", "stval", "mtvec", "stvec", "mode",
 #ifdef DEBUG_MODE_DIFF
   "debug mode", "dcsr", "dpc", "dscratch0", "dscratch1",
- #endif
+#endif
+#ifdef H_MODE_DIFF
+  "virt mode",
+  "mtval2", "mtinst", "hstatus", "hideleg", "hedeleg",
+  "hcounteren", "htval", "htinst", "hgatp", "vsstatus",
+  "vstvec", "vsepc", "vscause", "vstval", "vsatp", "vsscratch"
+#endif
 };
 
 Difftest **difftest = NULL;
@@ -475,27 +481,82 @@ int Difftest::do_ptwrefill_check() {
     return do_refill_check(PAGECACHEID);
 }
 
+typedef struct r_s2xlate
+{
+  PTE pte;
+  uint8_t level;
+};
+
+
+r_s2xlate do_s2xlate(Hgatp* hgatp, uint64_t gpaddr){
+    PTE pte;
+    uint64_t hpaddr;
+    uint8_t level;
+    uint64_t pg_base = hgatp->ppn << 12;
+    r_s2xlate r_s2;
+//    printf("gpaddr: %lx\n", gpaddr);
+    if(hgatp->mode == 0){
+//        printf("hpaddr: %lx\n", gpaddr);
+        return gpaddr;
+    }
+    for (level = 0; level < 3; level ++) {
+        hpaddr = pg_base + GVPNi(gpaddr, level) * sizeof(uint64_t);
+//        printf("i = %d,hpaddr: %lx\n",level, hpaddr);
+        read_goldenmem(hpaddr, &pte.val, 8);
+        pg_base = pte.ppn << 12;
+        if (!pte.v || pte.r || pte.x || pte.w || level == 2) {
+          break;
+        }
+    }
+    r_s2.pte = pte;
+    r_s2.level = level;
+    return r_s2;
+}
+
 int Difftest::do_l1tlb_check(int l1tlbid) {
 
   PTE pte;
   uint64_t paddr;
   uint8_t difftest_level;
+  r_s2xlate r_s2;
 
   if (l1tlbid == STTLBID) {
     for (int i = 0; i < DIFFTEST_STTLB_WIDTH; i++) {
       if (!dut.sttlb[i].valid) {
         continue;
       }
-
-      uint64_t pg_base = dut.sttlb[i].satp << 12;
-      for (difftest_level = 0; difftest_level < 3; difftest_level++) {
-        paddr = pg_base + VPNi(dut.sttlb[i].vpn, difftest_level) * sizeof(uint64_t);
-        read_goldenmem(paddr, &pte.val, 8);
-        if (!pte.v || pte.r || pte.x || pte.w || difftest_level == 2) {
-          break;
+      Satp* satp = (Satp*)&dut.sttlb[i].satp;
+      Satp* vsatp = (Satp*)&dut.sttlb[i].vsatp;
+      Hgatp* hgatp = (Hgatp*)&dut.sttlb[i].hgatp;
+      uint8_t hasS2xlate = dut.sttlb[i].s2xlate != noS2xlate
+      uint8_t onlyS2 = dut.sttlb[i].s2xlate == onlyStage2
+      uint64_t pg_base = (hasS2xlate? dut.sttlb[i].vsatp.ppn: dut.sttlb[i].satp.ppn) << 12;
+      if(onlyS2){
+        r_s2 = do_s2xlate(hgatp, dut.sttlb[i].vpn << 12);
+        if(r_s2.level < 2){
+            uint64_t pg_mask = ((1ull << VPNiSHFT(2 - r_s2.level)) - 1);
+            pg_base = (r_s2.pte.ppn << 12 & ~pg_mask) | (dut.sttlb[i].vpn << 12 & pg_mask & ~PAGE_MASK);
         }
-        pg_base = pte.ppn << 12;
+        pte.ppn = pg_base >> 12;
+      }else{
+        for (difftest_level = 0; difftest_level < 3; difftest_level++) {
+          paddr = pg_base + VPNi(dut.sttlb[i].vpn, difftest_level) * sizeof(uint64_t);
+          if(hasS2xlate){
+            r_s2 = do_s2xlate(hgatp, paddr);
+            if(r_s2.level < 2){
+                uint64_t pg_mask = ((1ull << VPNiSHFT(2 - r_s2.level)) - 1);
+                pg_base = (r_s2.pte.ppn << 12 & ~pg_mask) | (paddr & pg_mask & ~PAGE_MASK);
+            }
+            paddr = pg_base | (paddr & PAGE_MASK);
+          }
+          read_goldenmem(paddr, &pte.val, 8);
+          if (!pte.v || pte.r || pte.x || pte.w || difftest_level == 2) {
+            break;
+          }
+          pg_base = pte.ppn << 12;
+        }
       }
+      
 
       dut.sttlb[i].ppn = dut.sttlb[i].ppn >> (2 - difftest_level) * 9 << (2 - difftest_level) * 9;
       if (pte.difftest_ppn != dut.sttlb[i].ppn ) {
@@ -511,16 +572,38 @@ int Difftest::do_l1tlb_check(int l1tlbid) {
       if (!dut.ldtlb[i].valid) {
         continue;
       }
-
-      uint64_t pg_base = dut.ldtlb[i].satp << 12;
-      for (difftest_level = 0; difftest_level < 3; difftest_level++) {
-        paddr = pg_base + VPNi(dut.ldtlb[i].vpn, difftest_level) * sizeof(uint64_t);
-        read_goldenmem(paddr, &pte.val, 8);
-        if (!pte.v || pte.r || pte.x || pte.w || difftest_level == 2) {
-          break;
+      Satp* satp = (Satp*)&dut.ldtlb[i].satp;
+      Satp* vsatp = (Satp*)&dut.ldtlb[i].vsatp;
+      Hgatp* hgatp = (Hgatp*)&dut.ldtlb[i].hgatp;
+      uint8_t hasS2xlate = dut.ldtlb[i].s2xlate != noS2xlate
+      uint8_t onlyS2 = dut.ldtlb[i].s2xlate == onlyStage2
+      uint64_t pg_base = (hasS2xlate? dut.ldtlb[i].vsatp.ppn: dut.ldtlb[i].satp.ppn) << 12;
+      if(onlyS2) {
+        r_s2 = do_s2xlate(hgatp, dut.ldtlb[i].vpn << 12);
+        if(r_s2.level < 2){
+          uint64_t pg_mask = ((1ull << VPNiSHFT(2 - r_s2.level)) - 1);
+          pg_base = (r_s2.pte.ppn << 12 & ~pg_mask) | (dut.ldtlb[i].vpn << 12 & pg_mask & ~PAGE_MASK);
         }
-        pg_base = pte.ppn << 12;
+        pte.ppn = pg_base >> 12;
+      }else{
+        for (difftest_level = 0; difftest_level < 3; difftest_level++) {
+          paddr = pg_base + VPNi(dut.ldtlb[i].vpn, difftest_level) * sizeof(uint64_t);
+          if(hasS2xlate){
+            r_s2 = do_s2xlate(hgatp, paddr);
+            if(r_s2.level < 2){
+              uint64_t pg_mask = ((1ull << VPNiSHFT(2 - r_s2.level)) - 1);
+              pg_base = (r_s2.pte.ppn << 12 & ~pg_mask) | (dut.ldtlb[i].vpn << 12 & pg_mask & ~PAGE_MASK);
+            }
+            paddr = pg_base | (paddr & PAGE_MASK);
+          }
+          read_goldenmem(paddr, &pte.val, 8);
+          if (!pte.v || pte.r || pte.x || pte.w || difftest_level == 2) {
+            break;
+          }
+          pg_base = pte.ppn << 12;
+        }
       }
+      
 
       dut.ldtlb[i].ppn = dut.ldtlb[i].ppn >> (2 - difftest_level) * 9 << (2 - difftest_level) * 9;
       if (pte.difftest_ppn != dut.ldtlb[i].ppn ) {
@@ -536,16 +619,38 @@ int Difftest::do_l1tlb_check(int l1tlbid) {
       if (!dut.itlb[i].valid) {
         continue;
       }
-      uint64_t pg_base = dut.itlb[i].satp << 12;
-      for (difftest_level = 0; difftest_level < 3; difftest_level++) {
-        paddr = pg_base + VPNi(dut.itlb[i].vpn, difftest_level) * sizeof(uint64_t);
-        read_goldenmem(paddr, &pte.val, 8);
-        if (!pte.v || pte.r || pte.x || pte.w || difftest_level == 2) {
-          break;
+      Satp* satp = (Satp*)&dut.itlb[i].satp;
+      Satp* vsatp = (Satp*)&dut.itlb[i].vsatp;
+      Hgatp* hgatp = (Hgatp*)&dut.itlb[i].hgatp;
+      uint8_t hasS2xlate = dut.itlb[i].s2xlate != noS2xlate
+      uint8_t onlyS2 = dut.itlb[i].s2xlate == onlyStage2
+      uint64_t pg_base = (hasS2xlate? dut.itlb[i].vsatp.ppn: dut.itlb[i].satp.ppn) << 12;
+      if(onlyS2){
+        r_s2 = do_s2xlate(hgatp, dut.itlb[i].vpn << 12);
+        if(r_s2.level < 2){
+          uint64_t pg_mask = ((1ull << VPNiSHFT(2 - r_s2.level)) - 1);
+          pg_base = (r_s2.pte.ppn << 12 & ~pg_mask) | (dut.sttlb[i].vpn << 12 & pg_mask & ~PAGE_MASK);
         }
-        pg_base = pte.ppn << 12;
-      }
-
+        pte.ppn = pg_base >> 12;
+      }else{
+        for (difftest_level = 0; difftest_level < 3; difftest_level++) {
+          paddr = pg_base + VPNi(dut.itlb[i].vpn, difftest_level) * sizeof(uint64_t);
+          if(hasS2xlate){
+            r_s2 = do_s2xlate(hgatp, paddr);
+            if(r_s2.level < 2){
+              uint64_t pg_mask = ((1ull << VPNiSHFT(2 - r_s2.level)) - 1);
+              pg_base = (r_s2.pte.ppn << 12 & ~pg_mask) | (paddr & pg_mask & ~PAGE_MASK);
+            }
+            paddr = pg_base | (paddr & PAGE_MASK);
+          }
+          read_goldenmem(paddr, &pte.val, 8);
+          if (!pte.v || pte.r || pte.x || pte.w || difftest_level == 2) {
+            break;
+          }
+          pg_base = pte.ppn << 12;
+        }
+      } 
+      
       dut.itlb[i].ppn = dut.itlb[i].ppn >> (2 - difftest_level) * 9 << (2 - difftest_level) * 9;
       if (pte.difftest_ppn != dut.itlb[i].ppn) {
         printf("ITLB resp test of core %d index %d failed! vpn = %lx\n", id, i, dut.itlb[i].vpn);
@@ -574,16 +679,38 @@ int Difftest::do_l2tlb_check() {
     if (!dut.l2tlb[i].valid) {
       continue;
     }
-
+    Satp* satp = (Satp*)&dut.l2tlb[i].satp;
+    Satp* vsatp = (Satp*)&dut.l2tlb[i].vsatp;
+    Hgatp* hgatp = (Hgatp*)&dut.l2tlb[i].hgatp;
+    PTE pte;
+    r_s2xlate r_s2;
+    r_s2xlate check_s2;
+    uint64_t paddr;
+    uint8_t difftest_level;
     for (int j = 0; j < 8; j++) {
       if (dut.l2tlb[i].valididx[j]) {
-        PTE pte;
-        uint64_t pg_base = dut.l2tlb[i].satp << 12;
-        uint64_t paddr;
-        uint8_t difftest_level;
-
+        uint8_t hasS2xlate = dut.l2tlb[i].s2xlate != noS2xlate
+        uint8_t onlyS2 = dut.l2tlb[i].s2xlate == onlyStage2
+        uint64_t pg_base = (hasS2xlate? dut.l2tlb[i].vsatp.ppn : dut.l2tlb[i].satp.ppn) << 12;
+        if(onlyS2){
+          r_s2 = do_s2xlate(hgatp, dut.l2tlb[i].vpn << 12);
+          if(r_s2.level < 2){
+            uint64_t pg_mask = ((1ull << VPNiSHFT(2 - r_s2.level)) - 1);
+            uint64_t s2_pg_base = r_s2.pte.ppn << 12;
+            pg_base = (s2_pg_base & ~pg_mask) | (paddr & pg_mask & ~PAGE_MASK);
+          }
+          paddr = pg_base | (paddr & PAGE_MASK);
+        }
         for (difftest_level = 0; difftest_level < 3; difftest_level++) {
           paddr = pg_base + VPNi(dut.l2tlb[i].vpn + j, difftest_level) * sizeof(uint64_t);
+          if(hasS2xlate){
+            r_s2 = do_s2xlate(hgatp, paddr);
+            if(r_s2.level < 2){
+              uint64_t pg_mask = ((1ull << VPNiSHFT(2 - r_s2.level)) - 1);
+              pg_base = (r_s2.pte.ppn << 12 & ~pg_mask) | (paddr & pg_mask & ~PAGE_MASK);
+            }
+            paddr = pg_base | (paddr & PAGE_MASK);
+          }
           read_goldenmem(paddr, &pte.val, 8);
           if (!pte.v || pte.r || pte.x || pte.w || difftest_level == 2) {
             break;
@@ -591,11 +718,22 @@ int Difftest::do_l2tlb_check() {
           pg_base = pte.ppn << 12;
         }
 
+        if(hasS2xlate){
+          r_s2 = do_s2xlate(hgatp, pg_base);
+          if(dut.l2tlb[i].pteidx[j]) check_s2 = r_s2;
+        }
+        bool difftest_gpf = !r_s2.pte.v || (!r_s2.pte.r && r_s2.pte.w);
         bool difftest_pf = !pte.v || (!pte.r && pte.w);
-        if (pte.difftest_ppn != dut.l2tlb[i].ppn[j] || pte.difftest_perm != dut.l2tlb[i].perm || difftest_level != dut.l2tlb[i].level || difftest_pf != dut.l2tlb[i].pf) {
+        bool s1_check_fail = pte.difftest_ppn != dut.l2tlb[i].ppn[j] || pte.difftest_perm != dut.l2tlb[i].perm || difftest_level != dut.l2tlb[i].level || difftest_pf != dut.l2tlb[i].pf
+        bool s2_check_fail = hasS2xlate? r_s2.pte.difftest_ppn != dut.l2tlb[i].s2ppn[j] || r_s2.pte.difftest_perm != dut.l2tlb[i].g_perm || r_s2.level != dut.l2tlb[i].g_level || difftest_gpf != dut.l2tlb[i].gpf : false;
+        if (s1_check_fail || s2_check_fail) {
           printf("L2TLB resp test of core %d index %d sector %d failed! vpn = %lx\n", id, i, j, dut.l2tlb[i].vpn + j);
-          printf("  REF commits ppn 0x%lx, perm 0x%02x, level %d, pf %d\n", pte.difftest_ppn, pte.difftest_perm, difftest_level, !pte.difftest_v);
+          printf("  REF commits ppn 0x%lx, perm 0x%02x, level %d, pf %d\n", pte.difftest_ppn, pte.difftest_perm, difftest_level, difftest_pf);
+          if(hasS2xlate)
+            printf("      s2_ppn 0x%lx, g_perm 0x%02x, g_level %d, gpf %d\n", r_s2.pte.difftest_ppn, r_s2.pte.difftest_perm, r_s2.level, difftest_gpf);
           printf("  DUT commits ppn 0x%lx, perm 0x%02x, level %d, pf %d\n", dut.l2tlb[i].ppn[j], dut.l2tlb[i].perm, dut.l2tlb[i].level, dut.l2tlb[i].pf);
+          if(hasS2xlate)
+            printf("      s2_ppn 0x%lx, g_perm 0x%02x, g_level %d, gpf %d\n", dut.l2tlb[i].s2ppn[j], dut.l2tlb[i].g_perm, dut.l2tlb[i].g_level, dut.l2tlb[i].gpf);
           return 1;
         }
       }

@@ -97,7 +97,7 @@ static inline void pmem_write(paddr_t addr, word_t data, int len) {
 inline word_t paddr_read(paddr_t addr, int len) {
   if (in_pmem(addr)) return pmem_read(addr, len);
   else {
-    printf("[Hint] read not in pmem, maybe in speculative state! addr: %lx", addr);
+    printf("[Hint] read not in pmem, maybe in speculative state! addr: %lx\n", addr);
     return 0;
   }
   return 0;

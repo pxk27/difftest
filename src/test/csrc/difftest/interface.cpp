@@ -116,6 +116,28 @@ INTERFACE_CSR_STATE {
   packet->medeleg = medeleg;
 }
 
+INTERFACE_HCSR_STATE {
+  RETURN_NO_NULL
+  auto packet = difftest[coreid]->get_h_csr_state();
+  packet->virtMode = virtMode;
+  packet->mtval2 = mtval2;
+  packet->mtinst = mtinst;
+  packet->hstatus = hstatus;
+  packet->hideleg = hideleg;
+  packet->hedeleg = hedeleg;
+  packet->hcounteren = hcounteren;
+  packet->htval = htval;
+  packet->htinst = htinst;
+  packet->hgatp = hgatp;
+  packet->vsstatus = vsstatus;
+  packet->vstvec = vstvec;
+  packet->vsepc = vsepc;
+  packet->vscause = vscause;
+  packet->vstval = vstval;
+  packet->vsatp = vsatp;
+  packet->vsscratch = vsscratch;
+}
+
 INTERFACE_DM_STATE {
   RETURN_NO_NULL
   auto packet = difftest[coreid]->get_debug_state();
@@ -333,6 +355,9 @@ INTERFACE_L1TLB_EVENT {
     packet->satp = satp;
     packet->vpn = vpn;
     packet->ppn = ppn;
+    packet->s2xlate = s2xlate;
+    packet->vsatp = vsatp;
+    packet->hgatp = hgatp;
   }
 }
 
@@ -362,6 +387,22 @@ INTERFACE_L2TLB_EVENT {
     packet->perm = perm;
     packet->level = level;
     packet->pf = pf;
+    packet->ptedix[0] = pteidx_0;
+    packet->ptedix[1] = pteidx_1;
+    packet->ptedix[2] = pteidx_2;
+    packet->ptedix[3] = pteidx_3;
+    packet->ptedix[4] = pteidx_4;
+    packet->ptedix[5] = pteidx_5;
+    packet->ptedix[6] = pteidx_6;
+    packet->ptedix[7] = pteidx_7;
+    packet->vsatp = vsatp;
+    packet->hgatp = hgatp;
+    packet->gvpn = gvpn;
+    packet->g_perm = g_perm;
+    packet->g_level = g_level;
+    packet->s2ppn = s2ppn;
+    packet->gpf = gpf;
+    packet->s2xlate = s2xlate;
   }
 }
 

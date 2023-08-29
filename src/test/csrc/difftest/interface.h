@@ -147,6 +147,29 @@ extern "C" int v_difftest_step();
     DPIC_ARG_LONG medeleg                \
   )
 
+// v_difftest_HCSRState
+ #define INTERFACE_HCSR_STATE            \
+  DIFFTEST_DPIC_FUNC_DECL(HCSRState) (   \
+    DPIC_ARG_BYTE coreid,                \
+    DPIC_ARG_BIT  virtMode,              \
+    DPIC_ARG_LONG mtval2,                \
+    DPIC_ARG_LONG mtinst,                \
+    DPIC_ARG_LONG hstatus,               \
+    DPIC_ARG_LONG hideleg,               \
+    DPIC_ARG_LONG hedeleg,               \
+    DPIC_ARG_LONG hcounteren,            \
+    DPIC_ARG_LONG htval,                 \
+    DPIC_ARG_LONG htinst,                \
+    DPIC_ARG_LONG hgatp,                 \
+    DPIC_ARG_LONG vsstatus,              \
+    DPIC_ARG_LONG vstvec,                \
+    DPIC_ARG_LONG vsepc,                 \
+    DPIC_ARG_LONG vscause,               \
+    DPIC_ARG_LONG vstval,                \
+    DPIC_ARG_LONG vsatp,                 \
+    DPIC_ARG_LONG vsscratch              \
+  )
+
 // v_difftest_DebugMode
 #define INTERFACE_DM_STATE               \
   DIFFTEST_DPIC_FUNC_DECL(DebugMode) (   \
@@ -369,7 +392,10 @@ extern "C" int v_difftest_step();
     DPIC_ARG_BYTE l1tlbid,               \
     DPIC_ARG_LONG satp,                  \
     DPIC_ARG_LONG vpn,                   \
-    DPIC_ARG_LONG ppn                    \
+    DPIC_ARG_LONG ppn,                   \
+    DPIC_ARG_LONG vsatp,                 \
+    DPIC_ARG_LONG hgatp,                 \
+    DPIC_ARG_BIT  s2xlate                \
   )
 
 // v_difftest_l2tlbEvent
@@ -398,7 +424,23 @@ extern "C" int v_difftest_step();
     DPIC_ARG_LONG ppn_7,                 \
     DPIC_ARG_BYTE perm,                  \
     DPIC_ARG_BYTE level,                 \
-    DPIC_ARG_BIT  pf                     \
+    DPIC_ARG_BIT  pteidx_0,              \
+    DPIC_ARG_BIT  pteidx_1,              \
+    DPIC_ARG_BIT  pteidx_2,              \
+    DPIC_ARG_BIT  pteidx_3,              \
+    DPIC_ARG_BIT  pteidx_4,              \
+    DPIC_ARG_BIT  pteidx_5,              \
+    DPIC_ARG_BIT  pteidx_6,              \
+    DPIC_ARG_BIT  pteidx_7,              \
+    DPIC_ARG_BIT  pf,                    \
+    DPIC_ARG_LONG vsatp,                 \
+    DPIC_ARG_LONG hgatp,                 \
+    DPIC_ARG_BYTE s2xlate,               \
+    DPIC_ARG_BYTE g_perm,                \
+    DPIC_ARG_BYTE g_level,               \
+    DPIC_ARG_BIT  gpf,                   \
+    DPIC_ARG_LONG gvpn,                  \
+    DPIC_ARG_LONG s2ppn                  \
   )
 
 // v_difftest_RefillEvent
