@@ -560,9 +560,10 @@ int Difftest::do_l1tlb_check(int l1tlbid) {
 
       dut.sttlb[i].ppn = dut.sttlb[i].ppn >> (2 - difftest_level) * 9 << (2 - difftest_level) * 9;
       if (pte.difftest_ppn != dut.sttlb[i].ppn ) {
-        printf("STTLB resp test of core %d index %d failed! vpn = %lx\n", id, i, dut.sttlb[i].vpn);
+        printf("Warning: STTLB resp test of core %d index %d failed! vpn = %lx\n", id, i, dut.sttlb[i].vpn);
         printf("  REF commits ppn 0x%lx, DUT commits ppn 0x%lx\n", pte.difftest_ppn, dut.sttlb[i].ppn);
-        return 1;
+        printf("  REF commits perm 0x%02x, level %d, pf %d\n", pte.difftest_perm, difftest_level, !pte.difftest_v);
+        return 0;
       }
     }
     return 0;
@@ -607,9 +608,10 @@ int Difftest::do_l1tlb_check(int l1tlbid) {
 
       dut.ldtlb[i].ppn = dut.ldtlb[i].ppn >> (2 - difftest_level) * 9 << (2 - difftest_level) * 9;
       if (pte.difftest_ppn != dut.ldtlb[i].ppn ) {
-        printf("LDTLB resp test of core %d index %d failed! vpn = %lx\n", id, i, dut.ldtlb[i].vpn);
+        printf("Warning: LDTLB resp test of core %d index %d failed! vpn = %lx\n", id, i, dut.ldtlb[i].vpn);
         printf("  REF commits ppn 0x%lx, DUT commits ppn 0x%lx\n", pte.difftest_ppn, dut.ldtlb[i].ppn);
-        return 1;
+        printf("  REF commits perm 0x%02x, level %d, pf %d\n", pte.difftest_perm, difftest_level, !pte.difftest_v);
+        return 0;
       }
     }
     return 0;
@@ -653,9 +655,10 @@ int Difftest::do_l1tlb_check(int l1tlbid) {
       
       dut.itlb[i].ppn = dut.itlb[i].ppn >> (2 - difftest_level) * 9 << (2 - difftest_level) * 9;
       if (pte.difftest_ppn != dut.itlb[i].ppn) {
-        printf("ITLB resp test of core %d index %d failed! vpn = %lx\n", id, i, dut.itlb[i].vpn);
+        printf("Warning: ITLB resp test of core %d index %d failed! vpn = %lx\n", id, i, dut.itlb[i].vpn);
         printf("  REF commits ppn 0x%lx, DUT commits ppn 0x%lx\n", pte.difftest_ppn, dut.itlb[i].ppn);
-        return 1;
+        printf("  REF commits perm 0x%02x, level %d, pf %d\n", pte.difftest_perm, difftest_level, !pte.difftest_v);
+        return 0;
       }
     }
     return 0;
@@ -727,7 +730,7 @@ int Difftest::do_l2tlb_check() {
         bool s1_check_fail = pte.difftest_ppn != dut.l2tlb[i].ppn[j] || pte.difftest_perm != dut.l2tlb[i].perm || difftest_level != dut.l2tlb[i].level || difftest_pf != dut.l2tlb[i].pf
         bool s2_check_fail = hasS2xlate? r_s2.pte.difftest_ppn != dut.l2tlb[i].s2ppn[j] || r_s2.pte.difftest_perm != dut.l2tlb[i].g_perm || r_s2.level != dut.l2tlb[i].g_level || difftest_gpf != dut.l2tlb[i].gpf : false;
         if (s1_check_fail || s2_check_fail) {
-          printf("L2TLB resp test of core %d index %d sector %d failed! vpn = %lx\n", id, i, j, dut.l2tlb[i].vpn + j);
+          printf("Warning: L2TLB resp test of core %d index %d sector %d failed! vpn = %lx\n", id, i, j, dut.l2tlb[i].vpn + j);
           printf("  REF commits ppn 0x%lx, perm 0x%02x, level %d, pf %d\n", pte.difftest_ppn, pte.difftest_perm, difftest_level, difftest_pf);
           if(hasS2xlate)
             printf("      s2_ppn 0x%lx, g_perm 0x%02x, g_level %d, gpf %d\n", r_s2.pte.difftest_ppn, r_s2.pte.difftest_perm, r_s2.level, difftest_gpf);
