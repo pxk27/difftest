@@ -103,7 +103,7 @@ class DiffCSRStateIO extends DifftestBundle {
 }
 
 class DiffHCSRStateIO extends DifftestBundle {
-  val virtMode = Input(Bool)
+  val virtMode = Input(Bool())
   val mtval2 = Input(UInt(64.W))
   val mtinst = Input(UInt(64.W))
   val hstatus = Input(UInt(64.W))
@@ -204,12 +204,12 @@ class DiffL2TLBEventIO extends DifftestBundle with DifftestWithIndex {
   val pteidx = Input(Vec(8, Bool()))
   val vsatp = Input(UInt(64.W))
   val hgatp = Input(UInt(64.W))
-  val gvpn = Input(64.W)
+  val gvpn = Input(UInt(64.W))
   val g_perm = Input(UInt(8.W))
   val g_level = Input(UInt(8.W))
   val s2ppn = Input(UInt(64.W))
   val gpf = Input(Bool())
-  val s2xlate = Input(2.W)
+  val s2xlate = Input(UInt(2.W))
 }
 
 class DiffRefillEventIO extends DifftestBundle {

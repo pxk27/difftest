@@ -727,7 +727,7 @@ int Difftest::do_l2tlb_check() {
         }
         bool difftest_gpf = !r_s2.pte.v || (!r_s2.pte.r && r_s2.pte.w);
         bool difftest_pf = !pte.v || (!pte.r && pte.w);
-        bool s1_check_fail = pte.difftest_ppn != dut.l2tlb[i].ppn[j] || pte.difftest_perm != dut.l2tlb[i].perm || difftest_level != dut.l2tlb[i].level || difftest_pf != dut.l2tlb[i].pf
+        bool s1_check_fail = pte.difftest_ppn != dut.l2tlb[i].ppn[j] || pte.difftest_perm != dut.l2tlb[i].perm || difftest_level != dut.l2tlb[i].level || difftest_pf != dut.l2tlb[i].pf;
         bool s2_check_fail = hasS2xlate? r_s2.pte.difftest_ppn != dut.l2tlb[i].s2ppn[j] || r_s2.pte.difftest_perm != dut.l2tlb[i].g_perm || r_s2.level != dut.l2tlb[i].g_level || difftest_gpf != dut.l2tlb[i].gpf : false;
         if (s1_check_fail || s2_check_fail) {
           printf("Warning: L2TLB resp test of core %d index %d sector %d failed! vpn = %lx\n", id, i, j, dut.l2tlb[i].vpn + j);
