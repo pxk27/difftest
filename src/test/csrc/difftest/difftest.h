@@ -43,6 +43,9 @@ enum { ITLBID, LDTLBID, STTLBID};
 #else
 #define DEBUG_MODE_SKIP(v, f, instr) false
 #endif
+#define PAGE_SHIFT        12
+#define PAGE_SIZE         (1ul << PAGE_SHIFT)
+#define PAGE_MASK         (PAGE_SIZE - 1)
 
 // Difftest structures
 // trap events: self-defined traps
@@ -127,7 +130,7 @@ typedef struct __attribute__((packed)) {
    uint64_t vstval;
    uint64_t vsatp;
    uint64_t vsscratch;
-} h_csr_state_t
+} h_csr_state_t;
 
 typedef struct __attribute__((packed)) {
   uint64_t debugMode;
@@ -138,13 +141,13 @@ typedef struct __attribute__((packed)) {
 } debug_mode_t;
 
 #ifdef H_MODE_DIFF
-#define DIFFTEST_NR_H_REG sizeof(h_csr_state_t/sizeof(uint64_t))
+#define DIFFTEST_NR_H_REG sizeof(h_csr_state_t)/sizeof(uint64_t)
 #else
 #define DIFFTEST_NR_H_REG 0
 #endif
 
 #ifdef DEBUG_MODE_DIFF
-#define DIFFTEST_NR_DMODE_REG sizeof(debug_mode_t) / sizeof(uint64_t);
+#define DIFFTEST_NR_DMODE_REG sizeof(debug_mode_t) / sizeof(uint64_t)
 #else
 #define DIFFTEST_NR_DMODE_REG 0
 #endif
@@ -263,7 +266,7 @@ typedef struct {
   instr_commit_t    commit[DIFFTEST_COMMIT_WIDTH];
   arch_reg_state_t  regs;
   arch_csr_state_t  csr;
-  arch_csr_state_t  hcsr;
+  h_csr_state_t  hcsr;
   debug_mode_t      dmregs;
   sbuffer_state_t   sbuffer[DIFFTEST_SBUFFER_RESP_WIDTH];
   store_event_t     store[DIFFTEST_STORE_WIDTH];
