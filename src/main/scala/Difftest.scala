@@ -235,7 +235,7 @@ class DiffHCSRState extends DifftestBundle {
   val vsatp = UInt(64.W)
   val vsscratch = UInt(64.W)
   override val desiredCppName: String = "hcsr"
-  override val desiredOffset: Int = 1 
+  override val desiredOffset: Int = 6
 }
 
 

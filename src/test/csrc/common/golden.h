@@ -51,7 +51,7 @@ typedef union PageTableEntry {
 
 typedef union atpStruct{
   struct {
-    uint32_t ppn: 44;
+    uint64_t ppn: 44;
     uint32_t asid: 16;
     uint32_t mode: 4;
   };
