@@ -625,6 +625,7 @@ int Difftest::do_l1tlb_check() {
     dut.l1tlb[i].ppn = dut.l1tlb[i].ppn >> (2 - difftest_level) * 9 << (2 - difftest_level) * 9;
     if (pte.difftest_ppn != dut.l1tlb[i].ppn ) {
       printf("Warning: l1tlb resp test of core %d index %d failed! vpn = %lx\n", id, i, dut.l1tlb[i].vpn);
+      printf("  REF commits pte.val: 0x%lx\n", pte.val);
       printf("  REF commits ppn 0x%lx, DUT commits ppn 0x%lx\n", pte.difftest_ppn, dut.l1tlb[i].ppn);
       printf("  REF commits perm 0x%02x, level %d, pf %d\n", pte.difftest_perm, difftest_level, !pte.difftest_v);
       return 0;
