@@ -123,7 +123,7 @@ abstract class DifftestBundle extends Bundle
   }
   def toCppDeclaration: String = {
     val cpp = ListBuffer.empty[String]
-    cpp += "typedef struct {"
+    cpp += s"struct ${desiredModuleName}{"
     for (((name, elem), size) <- diffElements.zip(diffSizes(8))) {
       val isRemoved = isFlatten && Seq("valid", "address").contains(name)
       if (!isRemoved) {
@@ -132,7 +132,7 @@ abstract class DifftestBundle extends Bundle
         cpp += f"  $arrayType%-8s $name$arrayWidth;"
       }
     }
-    cpp += s"} ${desiredModuleName};"
+    cpp += "};"
     cpp.mkString("\n")
   }
 }
@@ -513,7 +513,7 @@ object DifftestModule {
     })
 
     // create top-level difftest struct
-    difftestCpp += "typedef struct {"
+    difftestCpp += "struct DiffTestState {"
     for ((className, cppInstances) <- uniqBundles.toSeq.sortBy(_._2.head._1.order)) {
       val bundleType = cppInstances.head._1
       val instanceName = bundleType.desiredCppName
@@ -525,7 +525,7 @@ object DifftestModule {
       val arrayWidth = if (cppIsArray) s"[$instanceCount]" else ""
       difftestCpp += f"  $className%-30s $instanceName$arrayWidth;"
     }
-    difftestCpp += "} DiffTestState;"
+    difftestCpp += "};"
     difftestCpp += ""
 
     difftestCpp += "#endif // __DIFFSTATE_H__"

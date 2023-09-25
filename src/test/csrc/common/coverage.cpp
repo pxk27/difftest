@@ -138,10 +138,10 @@ uint32_t FIRRTLCoverage::cover_sum(const FIRRTLCoverPoint *cover) {
 #endif // FIRRTL_COVER
 
 #ifdef LLVM_COVER
-typedef struct {
+struct llvm_sancov_pc_t {
   void *pc;
   uint64_t tag;
-} llvm_sancov_pc_t;
+};
 
 LLVMSanCovData* llvm_sancov = nullptr;
 

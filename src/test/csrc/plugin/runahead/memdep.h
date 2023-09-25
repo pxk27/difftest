@@ -19,10 +19,10 @@
 
 #include "common.h"
 
-typedef struct MemInstInfo {
+struct MemInstInfo {
   uint64_t pc;
   uint64_t vaddr;
-}MemInstInfo;
+};
 
 class MemdepWatchWindow {
   public:

@@ -24,7 +24,6 @@
 #include "ram.h"
 #include "common.h"
 
-typedef uint64_t uint64_t;
 typedef uint64_t word_t;
 
 extern uint8_t* pmem;

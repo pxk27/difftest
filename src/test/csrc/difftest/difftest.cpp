@@ -545,11 +545,10 @@ int Difftest::do_ptwrefill_check() {
     return do_refill_check(PAGECACHEID);
 }
 
-typedef struct 
-{
+struct r_s2xlate {
   PTE pte;
   uint8_t level;
-} r_s2xlate;
+};
 
 
 r_s2xlate do_s2xlate(Hgatp* hgatp, uint64_t gpaddr){
