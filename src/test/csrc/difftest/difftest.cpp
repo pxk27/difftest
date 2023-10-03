@@ -598,29 +598,31 @@ int Difftest::do_l1tlb_check() {
     uint64_t pg_base = (hasS2xlate? vsatp->ppn: satp->ppn) << 12;
     if(onlyS2) {
       r_s2 = do_s2xlate(hgatp, dut.l1tlb[i].vpn << 12);
-      if(r_s2.level < 2){
-        uint64_t pg_mask = ((1ull << VPNiSHFT(2 - r_s2.level)) - 1);
-        pg_base = (r_s2.pte.ppn << 12 & ~pg_mask) | (dut.l1tlb[i].vpn << 12 & pg_mask & ~PAGE_MASK);
-      }
-      pte.ppn = pg_base >> 12;
+      pte = r_s2.pte;
     }else{
-        for (difftest_level = 0; difftest_level < 3; difftest_level++) {
-          paddr = pg_base + VPNi(dut.l1tlb[i].vpn, difftest_level) * sizeof(uint64_t);
-          if(hasS2xlate){
-            r_s2 = do_s2xlate(hgatp, paddr);
-            if(r_s2.level < 2){
-              uint64_t pg_mask = ((1ull << VPNiSHFT(2 - r_s2.level)) - 1);
-              pg_base = (r_s2.pte.ppn << 12 & ~pg_mask) | (paddr & pg_mask & ~PAGE_MASK);
-            }
-            paddr = pg_base | (paddr & PAGE_MASK);
+      for (difftest_level = 0; difftest_level < 3; difftest_level++) {
+        paddr = pg_base + VPNi(dut.l1tlb[i].vpn, difftest_level) * sizeof(uint64_t);
+        if(hasS2xlate){
+          r_s2 = do_s2xlate(hgatp, paddr);
+          if(r_s2.level < 2){
+            uint64_t pg_mask = ((1ull << VPNiSHFT(2 - r_s2.level)) - 1);
+            pg_base = (r_s2.pte.ppn << 12 & ~pg_mask) | (paddr & pg_mask & ~PAGE_MASK);
           }
-          read_goldenmem(paddr, &pte.val, 8);
-          if (!pte.v || pte.r || pte.x || pte.w || difftest_level == 2) {
-            break;
-          }
-          pg_base = pte.ppn << 12;
+          paddr = pg_base | (paddr & PAGE_MASK);
         }
+        read_goldenmem(paddr, &pte.val, 8);
+        if (!pte.v || pte.r || pte.x || pte.w || difftest_level == 2) {
+          break;
+        }
+        pg_base = pte.ppn << 12;
       }
+      if(hasS2xlate){
+        r_s2 = do_s2xlate(hgatp, pg_base);
+        pte = r_s2.pte;
+        difftest_level = r_s2.level;
+      }
+    }
+    
 
     dut.l1tlb[i].ppn = dut.l1tlb[i].ppn >> (2 - difftest_level) * 9 << (2 - difftest_level) * 9;
     if (pte.difftest_ppn != dut.l1tlb[i].ppn ) {
