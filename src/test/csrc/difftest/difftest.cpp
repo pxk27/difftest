@@ -558,10 +558,10 @@ r_s2xlate do_s2xlate(Hgatp* hgatp, uint64_t gpaddr){
     uint64_t pg_base = hgatp->ppn << 12;
     r_s2xlate r_s2;
 //    printf("gpaddr: %lx\n", gpaddr);
-    if(hgatp->mode == 0){
+    if (hgatp->mode == 0) {
 //        printf("hpaddr: %lx\n", gpaddr);
         r_s2.pte.ppn = gpaddr >> 12;
-        r_s2.level = 3;
+        r_s2.level = 2;
         return r_s2;
     }
     for (level = 0; level < 3; level ++) {
@@ -586,7 +586,7 @@ int Difftest::do_l1tlb_check() {
     }
     PTE pte;
     uint64_t paddr;
-    uint8_t difftest_level;
+    uint8_t difftest_level = 0;
     r_s2xlate r_s2;
 
     Satp* satp = (Satp*)&dut.l1tlb[i].satp;
@@ -595,34 +595,35 @@ int Difftest::do_l1tlb_check() {
     uint8_t hasS2xlate = dut.l1tlb[i].s2xlate != noS2xlate;
     uint8_t onlyS2 = dut.l1tlb[i].s2xlate == onlyStage2;
     uint64_t pg_base = (hasS2xlate? vsatp->ppn: satp->ppn) << 12;
-    if(onlyS2) {
+    if (onlyS2) {
       r_s2 = do_s2xlate(hgatp, dut.l1tlb[i].vpn << 12);
-      if(r_s2.level < 2){
+      if (r_s2.level < 2) {
         uint64_t pg_mask = ((1ull << VPNiSHFT(2 - r_s2.level)) - 1);
         pg_base = (r_s2.pte.ppn << 12 & ~pg_mask) | (dut.l1tlb[i].vpn << 12 & pg_mask & ~PAGE_MASK);
       }
       pte.ppn = pg_base >> 12;
-    }else{
-        for (difftest_level = 0; difftest_level < 3; difftest_level++) {
-          paddr = pg_base + VPNi(dut.l1tlb[i].vpn, difftest_level) * sizeof(uint64_t);
-          if(hasS2xlate){
-            r_s2 = do_s2xlate(hgatp, paddr);
-            if(r_s2.level < 2){
-              uint64_t pg_mask = ((1ull << VPNiSHFT(2 - r_s2.level)) - 1);
-              pg_base = (r_s2.pte.ppn << 12 & ~pg_mask) | (paddr & pg_mask & ~PAGE_MASK);
-            }
-            paddr = pg_base | (paddr & PAGE_MASK);
+    } else {
+      for (difftest_level = 0; difftest_level < 3; difftest_level++) {
+        paddr = pg_base + VPNi(dut.l1tlb[i].vpn, difftest_level) * sizeof(uint64_t);
+        if (hasS2xlate) {
+          r_s2 = do_s2xlate(hgatp, paddr);
+          if (r_s2.level < 2) {
+            uint64_t pg_mask = ((1ull << VPNiSHFT(2 - r_s2.level)) - 1);
+            pg_base = ((r_s2.pte.ppn << 12) & ~pg_mask) | (paddr & pg_mask & ~PAGE_MASK);
           }
-          read_goldenmem(paddr, &pte.val, 8);
-          if (!pte.v || pte.r || pte.x || pte.w || difftest_level == 2) {
-            break;
-          }
-          pg_base = pte.ppn << 12;
+          paddr = pg_base | (paddr & PAGE_MASK);
         }
+        read_goldenmem(paddr, &pte.val, 8);
+        if (!pte.v || pte.r || pte.x || pte.w || difftest_level == 2) {
+          break;
+        }
+        pg_base = pte.ppn << 12;
       }
 
-    dut.l1tlb[i].ppn = dut.l1tlb[i].ppn >> (2 - difftest_level) * 9 << (2 - difftest_level) * 9;
-    if (pte.difftest_ppn != dut.l1tlb[i].ppn ) {
+      dut.l1tlb[i].ppn = dut.l1tlb[i].ppn >> (2 - difftest_level) * 9 << (2 - difftest_level) * 9;
+    }
+    
+    if (pte.difftest_ppn != dut.l1tlb[i].ppn) {
       printf("Warning: l1tlb resp test of core %d index %d failed! vpn = %lx\n", id, i, dut.l1tlb[i].vpn);
       printf("  REF commits pte.val: 0x%lx\n", pte.val);
       printf("  REF commits ppn 0x%lx, DUT commits ppn 0x%lx\n", pte.difftest_ppn, dut.l1tlb[i].ppn);
