@@ -558,17 +558,17 @@ r_s2xlate do_s2xlate(Hgatp* hgatp, uint64_t gpaddr){
     uint8_t level;
     uint64_t pg_base = hgatp->ppn << 12;
     r_s2xlate r_s2;
-//    printf("gpaddr: %lx\n", gpaddr);
+  //  printf("gpaddr: %lx\n", gpaddr);
     if(hgatp->mode == 0){
-//        printf("hpaddr: %lx\n", gpaddr);
+      //  printf("hpaddr: %lx\n", gpaddr);
         r_s2.pte.ppn = gpaddr >> 12;
         r_s2.level = 3;
         return r_s2;
     }
     for (level = 0; level < 3; level ++) {
         hpaddr = pg_base + GVPNi(gpaddr, level) * sizeof(uint64_t);
-//        printf("i = %d,hpaddr: %lx\n",level, hpaddr);
         read_goldenmem(hpaddr, &pte.val, 8);
+        // printf("i = %d, hpaddr: %lx pte ppn: %lx\n",level, hpaddr, pte.ppn);
         pg_base = pte.ppn << 12;
         if (!pte.v || pte.r || pte.x || pte.w || level == 2) {
           break;
@@ -611,10 +611,10 @@ int Difftest::do_l1tlb_check() {
           paddr = pg_base | (paddr & PAGE_MASK);
         }
         read_goldenmem(paddr, &pte.val, 8);
+        pg_base = pte.ppn << 12;
         if (!pte.v || pte.r || pte.x || pte.w || difftest_level == 2) {
           break;
         }
-        pg_base = pte.ppn << 12;
       }
       if(hasS2xlate){
         r_s2 = do_s2xlate(hgatp, pg_base);
