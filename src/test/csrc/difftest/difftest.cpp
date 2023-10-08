@@ -599,6 +599,7 @@ int Difftest::do_l1tlb_check() {
     if(onlyS2) {
       r_s2 = do_s2xlate(hgatp, dut.l1tlb[i].vpn << 12);
       pte = r_s2.pte;
+      difftest_level = r_s2.level;
     }else{
       for (difftest_level = 0; difftest_level < 3; difftest_level++) {
         paddr = pg_base + VPNi(dut.l1tlb[i].vpn, difftest_level) * sizeof(uint64_t);
