@@ -27,7 +27,6 @@ static bool has_reset = false;
 static char bin_file[256] = "ram.bin";
 static char *flash_bin_file = NULL;
 static bool enable_difftest = true;
-static int max_cycles = 0;
 
 extern "C" void set_bin_file(char *s) {
   printf("ram image:%s\n",s);
@@ -53,11 +52,6 @@ extern "C" void set_no_diff() {
   enable_difftest = false;
 }
 
-extern "C" void set_max_cycles(long mc) {
-  printf("max cycles:%d\n", mc);
-  max_cycles = mc;
-}
-
 extern "C" void simv_init() {
   common_init("simv");
 
@@ -77,15 +71,6 @@ extern "C" int simv_step() {
     return 1;
   }
 
-  static int cycles = 0;
-  if (max_cycles != 0) { // 0 for no limit
-    if (cycles >= max_cycles) {
-      eprintf(ANSI_COLOR_YELLOW "EXCEEDED MAX CYCLE:%d\n" ANSI_COLOR_RESET, max_cycles);
-      return 1;
-    }
-    cycles ++;
-  }
-
   if (difftest_state() != -1) {
     int trapCode = difftest_state();
     switch (trapCode) {
@@ -103,4 +88,13 @@ extern "C" int simv_step() {
   } else {
     return 0;
   }
+}
+
+extern "C" int simv_nstep(uint8_t step) {
+  for(int i = 0; i < step; i++) {
+    int ret = simv_step();
+    if(ret)
+      return ret;
+  }
+  return 0;
 }

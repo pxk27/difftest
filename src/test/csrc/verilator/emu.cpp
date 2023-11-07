@@ -34,6 +34,7 @@
 #ifdef ENABLE_IPC
 #include <sys/stat.h>
 #endif
+#include <sys/resource.h>
 #include "ram.h"
 #include "compress.h"
 #include "lightsss.h"
@@ -301,6 +302,13 @@ Emulator::Emulator(int argc, const char *argv[]):
   dut_ptr(new VSimTop),
   cycles(0), trapCode(STATE_RUNNING), elapsed_time(uptime())
 {
+  // set stack size
+  struct rlimit rlim;
+  getrlimit(RLIMIT_STACK, &rlim);
+  rlim.rlim_cur = EMU_STACK_SIZE;
+  if (setrlimit(RLIMIT_STACK, &rlim)) {
+    printf("[warning] cannot set stack size\n");
+  }
   // junk, link for verilator
   get_sc_time_stamp = [this]() -> double {
     return get_cycles();
@@ -487,7 +495,7 @@ Emulator::~Emulator() {
   display_trapinfo();
 
 #ifndef CONFIG_NO_DIFFTEST
-  stats.update(&(difftest[0]->dut));
+  stats.update(difftest[0]->dut);
 #endif // CONFIG_NO_DIFFTEST
 
   simMemory->display_stats();
@@ -587,7 +595,7 @@ inline void Emulator::single_cycle() {
 
 #if VM_TRACE == 1
   if (args.enable_waveform) {
-#if !defined(CONFIG_NO_DIFFTEST) && !defined(CONFIG_DIFFTEST_MERGE)
+#if !defined(CONFIG_NO_DIFFTEST) && !defined(CONFIG_DIFFTEST_SQUASH)
     uint64_t cycle = difftest[0]->get_trap_event()->cycleCnt;
 #else
     static uint64_t cycle = -1UL;
@@ -640,11 +648,6 @@ inline void Emulator::single_cycle() {
 #endif
 
 end_single_cycle:
-#ifndef CONFIG_NO_DIFFTEST
-  if (args.trace_name) {
-    difftest_trace();
-  }
-#endif // CONFIG_NO_DIFFTEST
   cycles ++;
 }
 
@@ -757,7 +760,6 @@ int Emulator::tick() {
 #endif // CONFIG_NO_DIFFTEST
 
   single_cycle();
-
 #ifdef CONFIG_NO_DIFFTEST
   args.max_cycles --;
 #endif // CONFIG_NO_DIFFTEST
@@ -765,14 +767,26 @@ int Emulator::tick() {
   dut_ptr->io_perfInfo_dump = 0;
 
 #ifndef CONFIG_NO_DIFFTEST
-  if (args.enable_diff) {
-    if (difftest_step()) {
-      trapCode = STATE_ABORT;
-      return trapCode;
-    }
+  int step = 0;
+  if (args.trace_name && args.trace_is_read) {
+    step = 1;
+    difftest_trace_read();
+  }
+  else {
+    step = dut_ptr->difftest_step;
   }
 
-  trapCode = difftest_state();
+  if (args.trace_name && !args.trace_is_read) {
+    difftest_trace_write(step);
+  }
+
+  if (args.enable_diff) {
+    trapCode = difftest_nstep(step);
+  }
+  else {
+    trapCode = difftest_state();
+  }
+
   if (trapCode != STATE_RUNNING) {
 #ifdef FUZZER_LIB
       if (trapCode == STATE_GOODTRAP) {
@@ -842,7 +856,6 @@ int Emulator::tick() {
       }
     }
   }
-
   return 0;
 }
 

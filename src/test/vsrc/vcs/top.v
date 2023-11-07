@@ -18,11 +18,13 @@ import "DPI-C" function void set_bin_file(string bin);
 import "DPI-C" function void set_flash_bin(string bin);
 import "DPI-C" function void set_diff_ref_so(string diff_so);
 import "DPI-C" function void set_no_diff();
-import "DPI-C" function void set_max_cycles(int mc);
 import "DPI-C" function void simv_init();
 import "DPI-C" function int simv_step();
+import "DPI-C" function int simv_nstep(int step);
 
 module tb_top();
+
+`define STEP_WIDTH 8
 
 reg         clock;
 reg         reset;
@@ -35,12 +37,13 @@ wire        io_uart_out_valid;
 wire [ 7:0] io_uart_out_ch;
 wire        io_uart_in_valid;
 wire [ 7:0] io_uart_in_ch;
+wire [`STEP_WIDTH - 1:0] difftest_step;
 
 string bin_file;
 string flash_bin_file;
 string wave_type;
 string diff_ref_so;
-reg [31:0] max_cycles;
+reg [63:0] max_cycles;
 
 initial begin
   clock = 0;
@@ -101,12 +104,10 @@ initial begin
     set_no_diff();
   end
   // max cycles to execute, no limit for default
+  max_cycles = 0;
   if ($test$plusargs("max-cycles")) begin
     $value$plusargs("max-cycles=%d", max_cycles);
-    set_max_cycles(max_cycles);
-  end
-  else begin
-    max_cycles = 0;
+    $display("set max cycles: %d", max_cycles);
   end
 
   // Note: reset delay #100 should be larger than RANDOMIZE_DELAY
@@ -125,7 +126,8 @@ SimTop sim(
   .io_uart_out_valid(io_uart_out_valid),
   .io_uart_out_ch(io_uart_out_ch),
   .io_uart_in_valid(io_uart_in_valid),
-  .io_uart_in_ch(io_uart_in_ch)
+  .io_uart_in_ch(io_uart_in_ch),
+  .difftest_step(difftest_step)
 );
 
 assign io_logCtrl_log_level = 0;
@@ -140,23 +142,43 @@ always @(posedge clock) begin
   end
 end
 
-reg has_init;
+reg [`STEP_WIDTH - 1:0] difftest_step_delay;
 always @(posedge clock) begin
   if (reset) begin
-    has_init <= 1'b0;
+    difftest_step_delay <= 0;
   end
-  else if (!has_init) begin
-    simv_init();
-    has_init <= 1'b1;
+  else begin
+    difftest_step_delay <= difftest_step;
   end
+end
 
-  // check errors
-  if (!reset && has_init) begin
-    if (simv_step()) begin
+
+reg [63:0] n_cycles;
+always @(posedge clock) begin
+  if (reset) begin
+    n_cycles <= 64'h0;
+  end
+  else begin
+    n_cycles <= n_cycles + 64'h1;
+
+    // max cycles
+    if (max_cycles > 0 && n_cycles >= max_cycles) begin
+      $display("EXCEEDED MAX CYCLE: %d", max_cycles);
       $finish();
     end
-  end
 
+    // difftest
+    if (!n_cycles) begin
+      simv_init();
+    end
+    else if (|difftest_step_delay) begin
+      // check errors
+      if (simv_nstep(difftest_step_delay)) begin
+        $display("DIFFTEST FAILED at cycle %d", n_cycles);
+        $finish();
+      end
+    end
+  end
 end
 
 endmodule
