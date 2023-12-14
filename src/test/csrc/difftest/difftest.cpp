@@ -618,6 +618,11 @@ r_s2xlate do_s2xlate(Hgatp* hgatp, uint64_t gpaddr){
     return r_s2;
 }
 
+inline static uint64_t superpage_fake_leaf(uint8_t level, uint64_t paddr, uint64_t vaddr) {
+  const uint64_t pg_mask = ((1ull << VPNiSHFT(2 - level)) - 1);
+  return (paddr & ~pg_mask) | (vaddr & pg_mask & ~PAGE_MASK);
+}
+
 int Difftest::do_l1tlb_check() {
 #ifdef CONFIG_DIFFTEST_L1TLBEVENT
   for (int i = 0; i < CONFIG_DIFF_L1TLB_WIDTH; i++) {
@@ -645,10 +650,7 @@ int Difftest::do_l1tlb_check() {
         paddr = pg_base + VPNi(dut->l1tlb[i].vpn, difftest_level) * sizeof(uint64_t);
         if(hasS2xlate){
           r_s2 = do_s2xlate(hgatp, paddr);
-          if(r_s2.level < 2){
-            uint64_t pg_mask = ((1ull << VPNiSHFT(2 - r_s2.level)) - 1);
-            pg_base = (r_s2.pte.ppn << 12 & ~pg_mask) | (paddr & pg_mask & ~PAGE_MASK);
-          }
+          pg_base = superpage_fake_leaf(r_s2.level, r_s2.pte.ppn << 12, paddr);
           paddr = pg_base | (paddr & PAGE_MASK);
         }
         read_goldenmem(paddr, &pte.val, 8);
@@ -657,13 +659,15 @@ int Difftest::do_l1tlb_check() {
           break;
         }
       }
+
+      pg_base = superpage_fake_leaf(difftest_level, pg_base, dut->l1tlb[i].vpn << 12);
+      
       if(hasS2xlate){
         r_s2 = do_s2xlate(hgatp, pg_base);
         pte = r_s2.pte;
         difftest_level = r_s2.level;
       }
     }
-    
 
     dut->l1tlb[i].ppn = dut->l1tlb[i].ppn >> (2 - difftest_level) * 9 << (2 - difftest_level) * 9;
     if (pte.difftest_ppn != dut->l1tlb[i].ppn ) {
@@ -700,21 +704,14 @@ int Difftest::do_l2tlb_check() {
         uint64_t pg_base = (hasS2xlate? vsatp->ppn : satp->ppn) << 12;
         if(onlyS2){
           r_s2 = do_s2xlate(hgatp, dut->l2tlb[i].vpn << 12);
-          if(r_s2.level < 2){
-            uint64_t pg_mask = ((1ull << VPNiSHFT(2 - r_s2.level)) - 1);
-            uint64_t s2_pg_base = r_s2.pte.ppn << 12;
-            pg_base = (s2_pg_base & ~pg_mask) | (paddr & pg_mask & ~PAGE_MASK);
-          }
+          pg_base = superpage_fake_leaf(r_s2.level, r_s2.pte.ppn << 12, paddr);
           paddr = pg_base | (paddr & PAGE_MASK);
         }
         for (difftest_level = 0; difftest_level < 3; difftest_level++) {
           paddr = pg_base + VPNi(dut->l2tlb[i].vpn + j, difftest_level) * sizeof(uint64_t);
           if(hasS2xlate){
             r_s2 = do_s2xlate(hgatp, paddr);
-            if(r_s2.level < 2){
-              uint64_t pg_mask = ((1ull << VPNiSHFT(2 - r_s2.level)) - 1);
-              pg_base = (r_s2.pte.ppn << 12 & ~pg_mask) | (paddr & pg_mask & ~PAGE_MASK);
-            }
+            pg_base = superpage_fake_leaf(r_s2.level, r_s2.pte.ppn << 12, paddr);
             paddr = pg_base | (paddr & PAGE_MASK);
           }
           read_goldenmem(paddr, &pte.val, 8);
@@ -723,6 +720,8 @@ int Difftest::do_l2tlb_check() {
           }
           pg_base = pte.ppn << 12;
         }
+
+        pg_base = superpage_fake_leaf(difftest_level, pg_base, dut->l1tlb[i].vpn << 12);
 
         if(hasS2xlate){
           r_s2 = do_s2xlate(hgatp, pg_base);
