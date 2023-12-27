@@ -17,7 +17,7 @@
 package difftest
 
 import chisel3._
-import difftest.gateway.Gateway
+import difftest.gateway.{Gateway, GatewayConfig}
 
 import java.nio.charset.StandardCharsets
 import java.nio.file.{Files, Paths}
@@ -273,6 +273,10 @@ class DiffRunaheadRedirectEvent extends RunaheadRedirectEvent with DifftestBundl
   override val desiredCppName: String = "runahead_redirect"
 }
 
+class DiffTraceInfo(config: GatewayConfig) extends TraceInfo(config) with DifftestBundle {
+  override val desiredCppName: String = "trace_info"
+}
+
 trait DifftestModule[T <: DifftestBundle] {
   val io: T
 }
@@ -313,9 +317,10 @@ object DifftestModule {
 
     difftest.step := 0.U
 
-    val gateway_tuple = Gateway.collect()
-    macros ++= gateway_tuple._1
-    difftest.step := gateway_tuple._2
+    val gateway = Gateway.collect()
+    macros ++= gateway._1
+    instances ++= gateway._2
+    difftest.step := gateway._3
 
     if (cppHeader.isDefined) {
       generateCppHeader(cpu, cppHeader.get)
