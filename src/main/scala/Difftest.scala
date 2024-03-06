@@ -22,6 +22,7 @@ import difftest.gateway.{Gateway, GatewayConfig}
 
 import java.nio.charset.StandardCharsets
 import java.nio.file.{Files, Paths}
+import scala.annotation.tailrec
 import scala.collection.mutable.ListBuffer
 
 trait DifftestWithCoreid {
@@ -52,7 +53,7 @@ sealed trait DifftestBundle extends Bundle with DifftestWithCoreid { this: Difft
   def getIndex: Option[UInt] = {
     this match {
       case b: DifftestWithIndex => Some(b.index)
-      case _ => None
+      case _                    => None
     }
   }
 
@@ -63,11 +64,12 @@ sealed trait DifftestBundle extends Bundle with DifftestWithCoreid { this: Difft
   def diffElements: Seq[(String, Seq[UInt])] = {
     val filteredElements = Seq("clock", "coreid", "index")
     val raw = elements.toSeq.reverse.filterNot(e => filteredElements.contains(e._1))
-    raw.map{ case (s, data) =>
+    raw.map { case (s, data) =>
       data match {
         case v: Vec[_] => (s, Some(v.asInstanceOf[Vec[UInt]]))
-        case u: UInt => (s, Some(Seq(u)))
-        case _ => println(s"Unknown type: ($s, $data)")
+        case u: UInt   => (s, Some(Seq(u)))
+        case _ =>
+          println(s"Unknown type: ($s, $data)")
           (s, None)
       }
     }.map(x => (x._1, x._2.get))
@@ -81,9 +83,10 @@ sealed trait DifftestBundle extends Bundle with DifftestWithCoreid { this: Difft
     val macroName = s"CONFIG_DIFFTEST_${desiredModuleName.toUpperCase.replace("DIFFTEST", "")}"
     s"#define $macroName"
   }
-  def toCppDeclaration: String = {
+  def toCppDeclaration(packed: Boolean): String = {
     val cpp = ListBuffer.empty[String]
-    cpp += "typedef struct {"
+    val attribute = if (packed) "__attribute__((packed))" else ""
+    cpp += s"typedef struct $attribute {"
     for (((name, elem), size) <- diffElements.zip(diffSizes(8))) {
       val isRemoved = isFlatten && Seq("valid", "address").contains(name)
       if (!isRemoved) {
@@ -112,10 +115,7 @@ class DiffArchEvent extends ArchEvent with DifftestBundle {
   override val desiredCppName: String = "event"
 }
 
-class DiffInstrCommit(nPhyRegs: Int = 32) extends InstrCommit(nPhyRegs)
-  with DifftestBundle
-  with DifftestWithIndex
-{
+class DiffInstrCommit(nPhyRegs: Int = 32) extends InstrCommit(nPhyRegs) with DifftestBundle with DifftestWithIndex {
   override val desiredCppName: String = "commit"
 
   private val maxNumFused = 255
@@ -131,7 +131,7 @@ class DiffInstrCommit(nPhyRegs: Int = 32) extends InstrCommit(nPhyRegs)
     val that = base.asInstanceOf[DiffInstrCommit]
     val squashed = WireInit(Mux(valid, this, that))
     squashed.valid := valid || that.valid
-    when (valid && that.valid) {
+    when(valid && that.valid) {
       squashed.nFused := nFused + that.nFused + 1.U
     }
     squashed
@@ -176,7 +176,8 @@ class DiffArchIntRegState extends ArchIntRegState with DifftestBundle {
   override val desiredOffset: Int = 0
 }
 
-abstract class DiffArchDelayedUpdate(numRegs: Int) extends ArchDelayedUpdate(numRegs)
+abstract class DiffArchDelayedUpdate(numRegs: Int)
+  extends ArchDelayedUpdate(numRegs)
   with DifftestBundle
   with DifftestWithIndex
 
@@ -203,21 +204,15 @@ class DiffVecCSRState extends VecCSRState with DifftestBundle {
   override val desiredOffset: Int = 5
 }
 
-class DiffSbufferEvent extends SbufferEvent with DifftestBundle
-  with DifftestWithIndex
-{
+class DiffSbufferEvent extends SbufferEvent with DifftestBundle with DifftestWithIndex {
   override val desiredCppName: String = "sbuffer"
 }
 
-class DiffStoreEvent extends StoreEvent with DifftestBundle
-  with DifftestWithIndex
-{
+class DiffStoreEvent extends StoreEvent with DifftestBundle with DifftestWithIndex {
   override val desiredCppName: String = "store"
 }
 
-class DiffLoadEvent extends LoadEvent with DifftestBundle
-  with DifftestWithIndex
-{
+class DiffLoadEvent extends LoadEvent with DifftestBundle with DifftestWithIndex {
   override val desiredCppName: String = "load"
   // TODO: currently we assume it can be dropped
   override def supportsSquashBase: Bool = true.B
@@ -227,25 +222,19 @@ class DiffAtomicEvent extends AtomicEvent with DifftestBundle {
   override val desiredCppName: String = "atomic"
 }
 
-class DiffL1TLBEvent extends L1TLBEvent with DifftestBundle
-  with DifftestWithIndex
-{
+class DiffL1TLBEvent extends L1TLBEvent with DifftestBundle with DifftestWithIndex {
   override val desiredCppName: String = "l1tlb"
   // TODO: currently we assume it can be dropped
   override def supportsSquashBase: Bool = true.B
 }
 
-class DiffL2TLBEvent extends L2TLBEvent with DifftestBundle
-  with DifftestWithIndex
-{
+class DiffL2TLBEvent extends L2TLBEvent with DifftestBundle with DifftestWithIndex {
   override val desiredCppName: String = "l2tlb"
   // TODO: currently we assume it can be dropped
   override def supportsSquashBase: Bool = true.B
 }
 
-class DiffRefillEvent extends RefillEvent with DifftestBundle
-  with DifftestWithIndex
-{
+class DiffRefillEvent extends RefillEvent with DifftestBundle with DifftestWithIndex {
   override val desiredCppName: String = "refill"
   // TODO: currently we assume it can be dropped
   override def supportsSquashBase: Bool = true.B
@@ -255,15 +244,11 @@ class DiffLrScEvent extends ScEvent with DifftestBundle {
   override val desiredCppName: String = "lrsc"
 }
 
-class DiffRunaheadEvent extends RunaheadEvent with DifftestBundle
-  with DifftestWithIndex
-{
+class DiffRunaheadEvent extends RunaheadEvent with DifftestBundle with DifftestWithIndex {
   override val desiredCppName: String = "runahead"
 }
 
-class DiffRunaheadCommitEvent extends RunaheadEvent with DifftestBundle
-  with DifftestWithIndex
-{
+class DiffRunaheadCommitEvent extends RunaheadEvent with DifftestBundle with DifftestWithIndex {
   override val desiredCppName: String = "runahead_commit"
 }
 
@@ -281,20 +266,33 @@ trait DifftestModule[T <: DifftestBundle] {
 
 object DifftestModule {
   private val enabled = true
-  private val instances = ListBuffer.empty[(DifftestBundle, String)]
+  private val instances = ListBuffer.empty[DifftestBundle]
   private val cppMacros = ListBuffer.empty[String]
   private val vMacros = ListBuffer.empty[String]
 
+  def parseArgs(args: Array[String]): Array[String] = {
+    @tailrec
+    def nextOption(args: Array[String], list: List[String]): Array[String] = {
+      list match {
+        case Nil => args
+        case "--difftest-config" :: config :: tail =>
+          Gateway.setConfig(config)
+          nextOption(args.patch(args.indexOf("--difftest-config"), Nil, 2), tail)
+        case option :: tail => nextOption(args, tail)
+      }
+    }
+    nextOption(args, args.toList)
+  }
+
   def apply[T <: DifftestBundle](
-    gen:      T,
-    style:    String  = "dpic",
+    gen: T,
     dontCare: Boolean = false,
-    delay:    Int     = 0,
+    delay: Int = 0,
   ): T = {
     val difftest: T = Wire(gen)
     if (enabled) {
-      register(gen, style)
-      val sink = Gateway(gen, style)
+      register(gen)
+      val sink = Gateway(gen)
       sink := Delayer(difftest, delay)
       sink.coreid := difftest.coreid
     }
@@ -304,28 +302,32 @@ object DifftestModule {
     difftest
   }
 
-  def register[T <: DifftestBundle](gen: T, style: String): Int = {
+  def register[T <: DifftestBundle](gen: T): Int = {
     val id = instances.length
-    val element = (gen, style)
-    instances += element
+    instances += gen
     id
   }
 
-  def finish(cpu: String, cppHeader: Option[String] = Some("dpic")): DifftestTopIO = {
+  def finish(cpu: String): DifftestTopIO = {
+    val gateway = Gateway.collect()
+    cppMacros ++= gateway.cppMacros
+    vMacros ++= gateway.vMacros
+    instances ++= gateway.instances
+
+    generateCppHeader(cpu, gateway.structPacked.getOrElse(false))
+    generateVeriogHeader()
+
+    if (enabled) {
+      createTopIOs(gateway.step.getOrElse(0.U))
+    } else {
+      WireInit(0.U.asTypeOf(new DifftestTopIO))
+    }
+  }
+
+  def createTopIOs(step: UInt): DifftestTopIO = {
     val difftest = IO(new DifftestTopIO)
 
-    difftest.step := 0.U
-
-    val gateway = Gateway.collect()
-    cppMacros ++= gateway._1
-    vMacros ++= gateway._2
-    instances ++= gateway._3
-    difftest.step := gateway._4
-
-    if (cppHeader.isDefined) {
-      generateCppHeader(cpu, cppHeader.get)
-    }
-    generateVeriogHeader()
+    difftest.step := step
 
     val timer = RegInit(0.U(64.W)).suggestName("timer")
     timer := timer + 1.U
@@ -341,7 +343,7 @@ object DifftestModule {
     difftest
   }
 
-  def generateCppHeader(cpu: String, style: String): Unit = {
+  def generateCppHeader(cpu: String, structPacked: Boolean): Unit = {
     val difftestCpp = ListBuffer.empty[String]
     difftestCpp += "#ifndef __DIFFSTATE_H__"
     difftestCpp += "#define __DIFFSTATE_H__"
@@ -356,37 +358,36 @@ object DifftestModule {
     difftestCpp += s"#define CPU_$cpu_s"
     difftestCpp += ""
 
-    val headerInstances = instances.filter(_._2 == style)
-
-    val numCores = headerInstances.count(_._1.isUniqueIdentifier)
-    if (headerInstances.nonEmpty) {
+    val numCores = instances.count(_.isUniqueIdentifier)
+    if (instances.nonEmpty) {
       difftestCpp += s"#define NUM_CORES $numCores"
       difftestCpp += ""
     }
 
-    val uniqBundles = headerInstances.groupBy(_._1.desiredModuleName)
+    val uniqBundles = instances.groupBy(_.desiredModuleName)
     // Create cpp declaration for each bundle type
-    uniqBundles.values.map(_.map(_._1)).foreach(bundles => {
-      val bundleType = bundles.head
-      difftestCpp += bundleType.toCppDeclMacro
-      val macroName = bundleType.desiredCppName.toUpperCase
-      if (bundleType.isInstanceOf[DifftestWithIndex]) {
-        val configWidthName = s"CONFIG_DIFF_${macroName}_WIDTH"
-        require(bundles.length % numCores == 0, s"Cores seem to have different # of ${macroName}")
-        difftestCpp += s"#define $configWidthName ${bundles.length / numCores}"
-      }
-      if (bundleType.isFlatten) {
-        val configWidthName = s"CONFIG_DIFF_${macroName}_WIDTH"
-        difftestCpp += s"#define $configWidthName ${bundleType.bits.getNumElements}"
-      }
-      difftestCpp += bundleType.toCppDeclaration
-      difftestCpp += ""
-    })
+    uniqBundles.values
+      .foreach(bundles => {
+        val bundleType = bundles.head
+        difftestCpp += bundleType.toCppDeclMacro
+        val macroName = bundleType.desiredCppName.toUpperCase
+        if (bundleType.isInstanceOf[DifftestWithIndex]) {
+          val configWidthName = s"CONFIG_DIFF_${macroName}_WIDTH"
+          require(bundles.length % numCores == 0, s"Cores seem to have different # of ${macroName}")
+          difftestCpp += s"#define $configWidthName ${bundles.length / numCores}"
+        }
+        if (bundleType.isFlatten) {
+          val configWidthName = s"CONFIG_DIFF_${macroName}_WIDTH"
+          difftestCpp += s"#define $configWidthName ${bundleType.bits.getNumElements}"
+        }
+        difftestCpp += bundleType.toCppDeclaration(structPacked)
+        difftestCpp += ""
+      })
 
     // create top-level difftest struct
     difftestCpp += "typedef struct {"
-    for ((className, cppInstances) <- uniqBundles.toSeq.sortBy(_._2.head._1.order)) {
-      val bundleType = cppInstances.head._1
+    for ((className, cppInstances) <- uniqBundles.toSeq.sortBy(_._2.head.order)) {
+      val bundleType = cppInstances.head
       val instanceName = bundleType.desiredCppName
       val cppIsArray = bundleType.isInstanceOf[DifftestWithIndex] || bundleType.isFlatten
       val nInstances = cppInstances.length
@@ -404,14 +405,22 @@ object DifftestModule {
          |class DiffStateBuffer {
          |public:
          |  virtual ~DiffStateBuffer() {}
-         |  virtual DiffTestState* get(int pos) = 0;
+         |  virtual DiffTestState* get(int zone, int index) = 0;
          |  virtual DiffTestState* next() = 0;
+         |  virtual void switch_zone() = 0;
          |};
          |
          |extern DiffStateBuffer** diffstate_buffer;
          |
          |extern void diffstate_buffer_init();
          |extern void diffstate_buffer_free();
+         |""".stripMargin
+    difftestCpp +=
+      s"""
+         |#ifdef CONFIG_DIFFTEST_PERFCNT
+         |void diffstate_perfcnt_init();
+         |void diffstate_perfcnt_finish(long long msec);
+         |#endif // CONFIG_DIFFTEST_PERFCNT
          |""".stripMargin
     difftestCpp += "#endif // __DIFFSTATE_H__"
     difftestCpp += ""
@@ -449,8 +458,7 @@ object Delayer {
       val delayer = Module(new Delayer(gen, n_cycles))
       delayer.i := gen
       delayer.o
-    }
-    else {
+    } else {
       gen
     }
   }
@@ -458,7 +466,7 @@ object Delayer {
 
 // Difftest emulator top. Will be created by DifftestModule.finish
 class DifftestTopIO extends Bundle {
-  val step = Output(UInt())
+  val step = Output(UInt(64.W))
   val perfCtrl = new PerfCtrlIO
   val logCtrl = new LogCtrlIO
   val uart = new UARTIO

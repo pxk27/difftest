@@ -14,9 +14,7 @@
 # See the Mulan PSL v2 for more details.
 #***************************************************************************************
 
-ifndef NOOP_HOME
-$(error NOOP_HOME is not set)
-endif
+NOOP_HOME  ?= $(abspath .)
 
 SIM_TOP    ?= SimTop
 DESIGN_DIR ?= $(NOOP_HOME)
@@ -76,6 +74,9 @@ SIM_CXXFLAGS += -DCONFIG_NO_DIFFTEST
 else
 SIM_CXXFILES += $(DIFFTEST_CXXFILES)
 SIM_CXXFLAGS += -I$(DIFFTEST_CSRC_DIR)
+ifeq ($(DIFFTEST_PERFCNT), 1)
+SIM_CXXFLAGS += -DCONFIG_DIFFTEST_PERFCNT
+endif
 endif
 
 # ChiselDB
@@ -136,6 +137,13 @@ else
 SIM_LDFLAGS  += -lz
 endif
 
+# ZSTD image support
+ifneq ($(NO_ZSTD_COMPRESSION),)
+SIM_CXXFLAGS += -DNO_ZSTD_COMPRESSION
+else
+SIM_LDFLAGS  += -lzstd
+endif
+
 # spike-dasm plugin
 WITH_SPIKE_DASM ?= 1
 ifeq ($(WITH_SPIKE_DASM),1)
@@ -194,4 +202,12 @@ include palladium.mk
 clean: vcs-clean pldm-clean
 	rm -rf $(BUILD_DIR)
 
-.PHONY: sim-verilog emu difftest_verilog clean
+format: scala-format clang-format
+
+scala-format:
+	mill -i mill.scalalib.scalafmt.ScalafmtModule/reformatAll __.sources
+
+clang-format:
+	clang-format -i $(shell find ./src/test/csrc -name "*.cpp" -or -name "*.h")
+
+.PHONY: sim-verilog emu difftest_verilog clean format scala-format clang-format

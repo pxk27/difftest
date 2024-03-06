@@ -1,6 +1,7 @@
 PLDM_TB_TOP  		 = tb_top
 PLDM_TOP_MODULE 	 = $(SIM_TOP)
 
+PLDM_SCRIPTS_DIR 	 = $(abspath ./scripts/palladium)
 PLDM_BUILD_DIR 		 = $(abspath $(BUILD_DIR)/pldm-compile)
 PLDM_CC_OBJ_DIR	 	 = $(abspath $(PLDM_BUILD_DIR)/cc_obj)
 
@@ -13,9 +14,16 @@ PLDM_MACRO_FLAGS 	+= +define+RANDOMIZE_DELAY=0
 ifeq ($(SYNTHESIS), 1)
 PLDM_MACRO_FLAGS 	+= +define+SYNTHESIS +define+TB_NO_DPIC
 else
-PLDM_MACRO_FLAGS 	+= +define+DIFFTEST +define+DISABLE_DIFFTEST_RAM_DPIC +define+DISABLE_SIMJTAG_DPIC
+PLDM_MACRO_FLAGS 	+= +define+DIFFTEST +define+DISABLE_SIMJTAG_DPIC
+ifneq ($(DIFFTEST_RAM_DPIC), 1)
+PLDM_MACRO_FLAGS 	+= +define+DISABLE_DIFFTEST_RAM_DPIC
+endif
 endif
 PLDM_MACRO_FLAGS 	+= $(PLDM_EXTRA_MACRO)
+
+ifeq ($(WORKLOAD_SWITCH),1)
+PLDM_MACRO_FLAGS  	+= +define+ENABLE_WORKLOAD_SWITCH
+endif
 
 # UA Args
 IXCOM_FLAGS  	 = -clean -64 -ua +sv +ignoreSimVerCheck +xe_alt_xlm
@@ -46,12 +54,7 @@ endif
 IXCOM_FLAGS 	+= +tfconfig+$(PLDM_SCRIPTS_DIR)/argConfigs.qel
 
 # Verilog Files
-PLDM_VSRC_DIR  	 = $(RTL_DIR) $(GEN_VSRC_DIR)
-ifeq ($(SYNTHESIS), 1)
-PLDM_VSRC_DIR 	+= $(abspath ./src/test/vsrc/vcs) $(abspath ./src/test/vsrc/common/SimJTAG.v)
-else
-PLDM_VSRC_DIR 	+= $(abspath ./src/test/vsrc)
-endif
+PLDM_VSRC_DIR  	 = $(RTL_DIR) $(GEN_VSRC_DIR) $(abspath ./src/test/vsrc)
 PLDM_VFILELIST 	 = $(PLDM_BUILD_DIR)/vfiles.f
 IXCOM_FLAGS   	+= -F $(PLDM_VFILELIST)
 

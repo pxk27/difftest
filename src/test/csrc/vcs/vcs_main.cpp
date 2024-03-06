@@ -14,40 +14,86 @@
 * See the Mulan PSL v2 for more details.
 ***************************************************************************************/
 
-#include <common.h>
-#include <locale.h>
-#include "difftest.h"
 #include "device.h"
+#include "difftest.h"
+#include "flash.h"
 #include "goldenmem.h"
 #include "ram.h"
-#include "flash.h"
 #include "refproxy.h"
+#include <common.h>
+#include <locale.h>
 #ifdef CONFIG_DIFFTEST_DEFERRED_RESULT
 #include "svdpi.h"
 #endif // CONFIG_DIFFTEST_DEFERRED_RESULT
+#ifdef CONFIG_DIFFTEST_PERFCNT
+#include "perf.h"
+#endif // CONFIG_DIFFTEST_PERFCNT
 
 static bool has_reset = false;
 static char bin_file[256] = "ram.bin";
 static char *flash_bin_file = NULL;
 static bool enable_difftest = true;
+static uint64_t max_instrs = 0;
+static char *workload_list = NULL;
+
+enum {
+  SIMV_RUN,
+  SIMV_DONE,
+  SIMV_FAIL,
+} simv_state;
 
 extern "C" void set_bin_file(char *s) {
-  printf("ram image:%s\n",s);
+  printf("ram image:%s\n", s);
   strcpy(bin_file, s);
 }
 
 extern "C" void set_flash_bin(char *s) {
-  printf("flash image:%s\n",s);
+  printf("flash image:%s\n", s);
   flash_bin_file = (char *)malloc(256);
   strcpy(flash_bin_file, s);
+}
+
+extern "C" void set_max_instrs(uint64_t mc) {
+  printf("set max instrs: %lu\n", mc);
+  max_instrs = mc;
 }
 
 extern const char *difftest_ref_so;
 extern "C" void set_diff_ref_so(char *s) {
   printf("diff-test ref so:%s\n", s);
-  char* buf = (char *)malloc(256);
+  char *buf = (char *)malloc(256);
   strcpy(buf, s);
   difftest_ref_so = buf;
+}
+
+extern "C" void set_workload_list(char *s) {
+  workload_list = (char *)malloc(256);
+  strcpy(workload_list, s);
+  printf("set workload list %s \n", workload_list);
+}
+
+int switch_workload() {
+  static FILE *fp = fopen(workload_list, "r");
+  if (fp) {
+    char name[128];
+    int num;
+    if (fscanf(fp, "%s %d", name, &num) == 2) {
+      set_bin_file(name);
+      set_max_instrs(num);
+    } else if (feof(fp)) {
+      printf("Workload list is completed\n");
+      fclose(fp);
+      return 1;
+    } else {
+      printf("Unknown workload list format\n");
+      fclose(fp);
+      return 1;
+    }
+  } else {
+    printf("Fail to open workload list %s\n", workload_list);
+    return 1;
+  }
+  return 0;
 }
 
 extern "C" void set_no_diff() {
@@ -55,7 +101,11 @@ extern "C" void set_no_diff() {
   enable_difftest = false;
 }
 
-extern "C" void simv_init() {
+extern "C" uint8_t simv_init() {
+  if (workload_list != NULL) {
+    if (switch_workload())
+      return 1;
+  }
   common_init("simv");
 
   init_ram(bin_file, DEFAULT_EMU_RAM_SIZE);
@@ -67,27 +117,45 @@ extern "C" void simv_init() {
     init_goldenmem();
     init_nemuproxy(DEFAULT_EMU_RAM_SIZE);
   }
+  return 0;
 }
 
-extern "C" int simv_step() {
+extern "C" uint8_t simv_step() {
   if (assert_count > 0) {
-    return 1;
+    return SIMV_FAIL;
   }
 
   if (difftest_state() != -1) {
     int trapCode = difftest_state();
-    switch (trapCode) {
-      case 0:
-        eprintf(ANSI_COLOR_GREEN "HIT GOOD TRAP\n" ANSI_COLOR_RESET);
-        break;
-      default:
-        eprintf(ANSI_COLOR_RED "Unknown trap code: %d\n" ANSI_COLOR_RESET, trapCode);
+    for (int i = 0; i < NUM_CORES; i++) {
+      printf("Core %d: ", i);
+      uint64_t pc = difftest[i]->get_trap_event()->pc;
+      switch (trapCode) {
+        case 0: eprintf(ANSI_COLOR_GREEN "HIT GOOD TRAP at pc = 0x%" PRIx64 "\n" ANSI_COLOR_RESET, pc); break;
+        default: eprintf(ANSI_COLOR_RED "Unknown trap code: %d\n" ANSI_COLOR_RESET, trapCode);
+      }
+      difftest[i]->display_stats();
     }
-    return trapCode + 1;
+    if (trapCode == 0)
+      return SIMV_DONE;
+    else
+      return SIMV_FAIL;
+  }
+
+  if (max_instrs != 0) { // 0 for no limit
+    auto trap = difftest[0]->get_trap_event();
+    if (max_instrs < trap->instrCnt) {
+      eprintf(ANSI_COLOR_GREEN "EXCEEDED MAX INSTR: %ld\n" ANSI_COLOR_RESET, max_instrs);
+      difftest[0]->display_stats();
+      return SIMV_DONE;
+    }
   }
 
   if (enable_difftest) {
-    return difftest_step();
+    if (difftest_step())
+      return SIMV_FAIL;
+    else
+      return 0;
   } else {
     return 0;
   }
@@ -100,38 +168,60 @@ void set_deferred_result_scope() {
   deferredResultScope = svGetScope();
 }
 
-extern "C" void set_deferred_result();
-void difftest_deferred_result() {
+extern "C" void set_deferred_result(uint8_t result);
+void difftest_deferred_result(uint8_t result) {
   if (deferredResultScope == NULL) {
     printf("Error: Could not retrieve deferred result scope, set first\n");
     assert(deferredResultScope);
   }
   svSetScope(deferredResultScope);
-  set_deferred_result();
+  set_deferred_result(result);
+}
+#endif // CONFIG_DIFFTEST_DEFERRED_RESULT
+
+void simv_finish() {
+  common_finish();
+  flash_finish();
+  if (enable_difftest) {
+    goldenmem_finish();
+    difftest_finish();
+  }
+  delete simMemory;
+  simMemory = nullptr;
 }
 
-static int simv_result = 0;
+static uint8_t simv_result = SIMV_RUN;
+#ifdef CONFIG_DIFFTEST_DEFERRED_RESULT
 extern "C" void simv_nstep(uint8_t step) {
-  if (simv_result)
+  if (simv_result == SIMV_FAIL || difftest == NULL)
     return;
+#else
+extern "C" uint8_t simv_nstep(uint8_t step) {
+  if (difftest == NULL)
+    return 0;
+#endif // CONFIG_DIFFTEST_DEFERRED_RESULT
+#ifdef CONFIG_DIFFTEST_PERFCNT
+#ifndef CONFIG_DIFFTEST_INTERNAL_STEP
+  difftest_calls[perf_simv_nstep]++;
+  difftest_bytes[perf_simv_nstep] += 1;
+#endif // CONFIG_DIFFTEST_INTERNAL_STEP
+#endif // CONFIG_DIFFTEST_PERFCNT
+  difftest_switch_zone();
   for (int i = 0; i < step; i++) {
     int ret = simv_step();
     if (ret) {
-        simv_result = ret;
-        break;
+      simv_result = ret;
+      simv_finish();
+#ifdef CONFIG_DIFFTEST_DEFERRED_RESULT
+      difftest_deferred_result(ret);
+      return;
+#else
+      return ret;
+#endif // CONFIG_DIFFTEST_DEFERRED_RESULT
     }
   }
-  if (simv_result) {
-    difftest_deferred_result();
-  }
-}
-#else
-extern "C" int simv_nstep(uint8_t step) {
-  for(int i = 0; i < step; i++) {
-    int ret = simv_step();
-    if(ret)
-      return ret;
-  }
+#ifndef CONFIG_DIFFTEST_DEFERRED_RESULT
   return 0;
+#endif // CONFIG_DIFFTEST_DEFERRED_RESULT
 }
 #endif // CONFIG_DIFFTEST_DEFERRED_RESULT
