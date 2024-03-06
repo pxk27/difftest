@@ -132,7 +132,6 @@ abstract class DPICBase(config: GatewayConfig) extends ExtModule with HasExtModu
       else ""
     val modDef =
       s"""
-         |`include "DifftestMacros.v"
          |module $desiredName(
          |  $modPortsString
          |);

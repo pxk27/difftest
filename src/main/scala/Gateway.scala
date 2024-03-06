@@ -286,7 +286,7 @@ class Preprocess(signals: Seq[DifftestBundle], config: GatewayConfig) extends Mo
       val commits = in.filter(_.desiredCppName == "commit").map(_.asInstanceOf[DiffInstrCommit])
       val num_skip = PopCount(commits.map(c => c.valid && c.skip))
       assert(num_skip <= 1.U, p"num_skip $num_skip is larger than one. Squash not supported yet")
-      val wb_for_skip = share_wbint.filter(_.desiredCppName == "wb_int").head.asInstanceOf[DiffIntWriteback]
+      val wb_for_skip = out.filter(_.desiredCppName == "wb_int").head.asInstanceOf[DiffIntWriteback]
       for (c <- commits) {
         when(c.valid && c.skip) {
           wb_for_skip.valid := true.B

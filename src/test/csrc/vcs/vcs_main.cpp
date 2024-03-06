@@ -224,4 +224,3 @@ extern "C" uint8_t simv_nstep(uint8_t step) {
   return 0;
 #endif // CONFIG_DIFFTEST_DEFERRED_RESULT
 }
-#endif // CONFIG_DIFFTEST_DEFERRED_RESULT
