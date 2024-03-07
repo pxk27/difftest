@@ -173,9 +173,9 @@ int RefProxy::compare(DiffTestState *dut) {
                          PROXY_COMPARE(vcsr),
 #endif // CONFIG_DIFFTEST_VECCSRSTATE
 #ifdef CONFIG_DIFFTEST_HCSRSTATE
-    PROXY_COMPARE(hcsr),
-#endif
-    PROXY_COMPARE(csr)
+                         PROXY_COMPARE(hcsr),
+#endif // CONFIG_DIFFTEST_HCSRSTATE
+                         PROXY_COMPARE(csr)
 
   };
   for (int i = 0; i < sizeof(results) / sizeof(int); i++) {

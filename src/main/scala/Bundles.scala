@@ -135,7 +135,7 @@ class CSRState extends DifftestBaseBundle {
 }
 
 class HCSRState extends DifftestBaseBundle {
-  val virtMode = Bool()
+  val virtMode = UInt(64.W)
   val mtval2 = UInt(64.W)
   val mtinst = UInt(64.W)
   val hstatus = UInt(64.W)
