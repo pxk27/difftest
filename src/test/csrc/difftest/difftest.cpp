@@ -758,10 +758,8 @@ int Difftest::do_l1tlb_check() {
         paddr = pg_base + VPNi(dut->l1tlb[i].vpn, difftest_level) * sizeof(uint64_t);
         if(hasS2xlate){
           r_s2 = do_s2xlate(hgatp, paddr);
-          if(r_s2.level < 2){
-            uint64_t pg_mask = ((1ull << VPNiSHFT(2 - r_s2.level)) - 1);
-            pg_base = (r_s2.pte.ppn << 12 & ~pg_mask) | (paddr & pg_mask & ~PAGE_MASK);
-          }
+          uint64_t pg_mask = ((1ull << VPNiSHFT(2 - r_s2.level)) - 1);
+          pg_base = (r_s2.pte.ppn << 12 & ~pg_mask) | (paddr & pg_mask & ~PAGE_MASK);
           paddr = pg_base | (paddr & PAGE_MASK);
         }
         read_goldenmem(paddr, &pte.val, 8);
@@ -813,21 +811,17 @@ int Difftest::do_l2tlb_check() {
         uint64_t pg_base = (hasS2xlate? vsatp->ppn : satp->ppn) << 12;
         if(onlyS2){
           r_s2 = do_s2xlate(hgatp, dut->l2tlb[i].vpn << 12);
-          if(r_s2.level < 2){
-            uint64_t pg_mask = ((1ull << VPNiSHFT(2 - r_s2.level)) - 1);
-            uint64_t s2_pg_base = r_s2.pte.ppn << 12;
-            pg_base = (s2_pg_base & ~pg_mask) | (paddr & pg_mask & ~PAGE_MASK);
-          }
+          uint64_t pg_mask = ((1ull << VPNiSHFT(2 - r_s2.level)) - 1);
+          uint64_t s2_pg_base = r_s2.pte.ppn << 12;
+          pg_base = (s2_pg_base & ~pg_mask) | (paddr & pg_mask & ~PAGE_MASK);
           paddr = pg_base | (paddr & PAGE_MASK);
         }
         for (difftest_level = 0; difftest_level < 3; difftest_level++) {
           paddr = pg_base + VPNi(dut->l2tlb[i].vpn + j, difftest_level) * sizeof(uint64_t);
           if(hasS2xlate){
             r_s2 = do_s2xlate(hgatp, paddr);
-            if(r_s2.level < 2){
-              uint64_t pg_mask = ((1ull << VPNiSHFT(2 - r_s2.level)) - 1);
-              pg_base = (r_s2.pte.ppn << 12 & ~pg_mask) | (paddr & pg_mask & ~PAGE_MASK);
-            }
+            uint64_t pg_mask = ((1ull << VPNiSHFT(2 - r_s2.level)) - 1);
+            pg_base = (r_s2.pte.ppn << 12 & ~pg_mask) | (paddr & pg_mask & ~PAGE_MASK);
             paddr = pg_base | (paddr & PAGE_MASK);
           }
           read_goldenmem(paddr, &pte.val, 8);
