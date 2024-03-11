@@ -293,6 +293,11 @@ struct ExecutionGuide {
   uint64_t exception_num;
   uint64_t mtval;
   uint64_t stval;
+#ifdef CONFIG_DIFFTEST_HCSRSTATE
+  uint64_t mtval2;
+  uint64_t htval;
+  uint64_t vstval;
+#endif // CONFIG_DIFFTEST_HCSRSTATE
   // force set jump target
   bool force_set_jump_target;
   uint64_t jump_target;

@@ -352,12 +352,18 @@ void Difftest::do_interrupt() {
 
 void Difftest::do_exception() {
   state->record_exception(dut->event.exceptionPC, dut->event.exceptionInst, dut->event.exception);
-  if (dut->event.exception == 12 || dut->event.exception == 13 || dut->event.exception == 15) {
+  if (dut->event.exception == 12 || dut->event.exception == 13 || dut->event.exception == 15 ||
+      dut->event.exception == 20 || dut->event.exception == 21 || dut->event.exception == 23 ) {
     struct ExecutionGuide guide;
     guide.force_raise_exception = true;
     guide.exception_num = dut->event.exception;
     guide.mtval = dut->csr.mtval;
     guide.stval = dut->csr.stval;
+#ifdef CONFIG_DIFFTEST_HCSRSTATE
+    guide.mtval2 = dut->csr.mtval2;
+    guide.htval = dut->csr.htval;
+    guide.vstval = dut->csr.vstval;
+#endif // CONFIG_DIFFTEST_HCSRSTATE
     guide.force_set_jump_target = false;
     proxy->guided_exec(guide);
   } else {
