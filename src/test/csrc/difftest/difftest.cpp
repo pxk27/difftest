@@ -360,9 +360,9 @@ void Difftest::do_exception() {
     guide.mtval = dut->csr.mtval;
     guide.stval = dut->csr.stval;
 #ifdef CONFIG_DIFFTEST_HCSRSTATE
-    guide.mtval2 = dut->csr.mtval2;
-    guide.htval = dut->csr.htval;
-    guide.vstval = dut->csr.vstval;
+    guide.mtval2 = dut->hcsr.mtval2;
+    guide.htval = dut->hcsr.htval;
+    guide.vstval = dut->hcsr.vstval;
 #endif // CONFIG_DIFFTEST_HCSRSTATE
     guide.force_set_jump_target = false;
     proxy->guided_exec(guide);
