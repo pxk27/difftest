@@ -768,7 +768,11 @@ int Difftest::do_l1tlb_check() {
           break;
         }
       }
-      if(hasS2xlate){
+      if(difftest_level < 2 && pte.v){
+        uint64_t pg_mask = ((1ull << VPNiSHFT(2 - difftest_level)) - 1);
+        pg_base = (pte.ppn << 12 & ~pg_mask) | (dut->l1tlb[i].vpn << 12 & pg_mask & ~PAGE_MASK);
+      }
+      if(hasS2xlate && pte.v){
         r_s2 = do_s2xlate(hgatp, pg_base);
         pte = r_s2.pte;
         difftest_level = r_s2.level;
