@@ -15,8 +15,9 @@
 
 package difftest.common
 
-import chisel3.util._
 import chisel3._
+import chisel3.util._
+import difftest.util.DataMirror._
 
 class LogPerfControl extends Bundle {
   val timer = UInt(64.W)
@@ -55,12 +56,20 @@ private class LogPerfHelper extends BlackBox with HasBlackBoxInline {
 }
 
 object LogPerfControl {
-  def apply(): LogPerfControl = {
-    Module(new LogPerfHelper).io
-  }
-
   private val instances = scala.collection.mutable.ListBuffer.empty[LogPerfControl]
-  def reuse(checker: LogPerfControl => Boolean): LogPerfControl = {
-    instances.find(checker).getOrElse(instances.addOne(apply()).last)
+  private def instantiate(): LogPerfControl = instances.addOne(WireInit(Module(new LogPerfHelper).io)).last
+
+  def apply(): LogPerfControl = instances.find(_.isVisible).getOrElse(instantiate())
+}
+
+object DifftestPerf {
+  def apply(perfName: String, perfCnt: UInt) = {
+    val helper = LogPerfControl.apply()
+    val counter = RegInit(0.U(64.W))
+    val next_counter = WireInit(counter + perfCnt)
+    counter := Mux(helper.clean, 0.U, next_counter)
+    when(helper.dump) {
+      printf(p"[DIFFTEST_PERF][time=${helper.timer}] $perfName, $next_counter\n")
+    }
   }
 }

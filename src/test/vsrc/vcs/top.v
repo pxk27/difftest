@@ -24,6 +24,9 @@ import "DPI-C" function void set_diff_ref_so(string diff_so);
 import "DPI-C" function void set_no_diff();
 import "DPI-C" function byte simv_init();
 import "DPI-C" function void set_max_instrs(longint mc);
+`ifdef WITH_DRAMSIM3
+import "DPI-C" function void simv_tick();
+`endif // WITH_DRAMSIM3
 `ifdef ENABLE_WORKLOAD_SWITCH
 import "DPI-C" function void set_workload_list(string path);
 `endif // ENABLE_WORKLOAD_SWITCH
@@ -210,7 +213,6 @@ SimTop sim(
 
 assign difftest_logCtrl_level = 0;
 assign difftest_perfCtrl_clean = 0;
-assign difftest_perfCtrl_dump = 0;
 assign difftest_uart_in_ch = 8'hff;
 
 always @(posedge clock) begin
@@ -241,6 +243,12 @@ assign workload_switch = simv_result == `SIMV_DONE;
 `endif // ENABLE_WORKLOAD_SWITCH
 `endif // TB_NO_DPIC
 
+`ifndef TB_NO_DPIC
+assign difftest_perfCtrl_dump = simv_result != 0;
+`else
+assign difftest_perfCtrl_dump = 0;
+`endif // TB_NO_DPIC
+
 reg [63:0] n_cycles;
 always @(posedge clock) begin
   if (reset) begin
@@ -256,6 +264,11 @@ always @(posedge clock) begin
     end
 
 `ifndef TB_NO_DPIC
+`ifdef WITH_DRAMSIM3
+    if (n_cycles) begin
+      simv_tick();
+    end
+`endif // WITH_DRAMSIM3
     // difftest
     if (!n_cycles) begin
       if (simv_init()) begin

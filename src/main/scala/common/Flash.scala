@@ -21,8 +21,14 @@ import chisel3.util._
 
 class DifftestFlashRead extends Bundle {
   val en = Input(Bool())
-  val addr = Input(UInt(31.W))
+  val addr = Input(UInt(32.W))
   val data = Output(UInt(64.W))
+
+  def read(enable: Bool, address: UInt): UInt = {
+    en := enable
+    addr := address
+    data
+  }
 }
 
 class FlashHelper extends ExtModule with HasExtModuleInline {
@@ -32,13 +38,16 @@ class FlashHelper extends ExtModule with HasExtModuleInline {
   setInline(
     "FlashHelper.v",
     """
-      |`ifndef SYNTHESIS
+      |`ifdef SYNTHESIS
+      |  `define DISABLE_DIFFTEST_FLASH_DPIC
+      |`endif // SYNTHESIS
+      |`ifndef DISABLE_DIFFTEST_FLASH_DPIC
       |import "DPI-C" function void flash_read
       |(
       |  input int addr,
       |  output longint data
       |);
-      |`endif // SYNTHESIS
+      |`endif // DISABLE_DIFFTEST_FLASH_DPIC
       |
       |module FlashHelper (
       |  input clock,
@@ -47,7 +56,7 @@ class FlashHelper extends ExtModule with HasExtModuleInline {
       |  output reg [63:0] r_data
       |);
       |
-      |`ifndef SYNTHESIS
+      |`ifndef DISABLE_DIFFTEST_FLASH_DPIC
       |  always @(posedge clock) begin
       |    if (r_en) flash_read(r_addr, r_data);
       |  end
@@ -55,8 +64,8 @@ class FlashHelper extends ExtModule with HasExtModuleInline {
       |`ifdef PALLADIUM
       |  initial $ixc_ctrl("tb_import", "$display");
       |`endif // PALLADIUM
-      |  // 1K entries. 8KB size.
-      |  `define FLASH_SIZE (8 * 1024)
+      |  // 512K entries. 4MB size.
+      |  `define FLASH_SIZE (4 * 1024 * 1024)
       |  reg [7:0] flash_mem [0 : `FLASH_SIZE - 1];
       |
       |  for (genvar i = 0; i < 8; i++) begin
@@ -103,7 +112,7 @@ class FlashHelper extends ExtModule with HasExtModuleInline {
       |      end
       |    end
       |  end
-      |`endif // SYNTHESIS
+      |`endif // DISABLE_DIFFTEST_FLASH_DPIC
       |
       |endmodule
      """.stripMargin,

@@ -18,11 +18,17 @@ PLDM_MACRO_FLAGS 	+= +define+DIFFTEST +define+DISABLE_SIMJTAG_DPIC
 ifneq ($(DIFFTEST_RAM_DPIC), 1)
 PLDM_MACRO_FLAGS 	+= +define+DISABLE_DIFFTEST_RAM_DPIC
 endif
+ifneq ($(DIFFTEST_FLASH_DPIC), 1)
+PLDM_MACRO_FLAGS 	+= +define+DISABLE_DIFFTEST_FLASH_DPIC
+endif
 endif
 PLDM_MACRO_FLAGS 	+= $(PLDM_EXTRA_MACRO)
 
 ifeq ($(WORKLOAD_SWITCH),1)
 PLDM_MACRO_FLAGS  	+= +define+ENABLE_WORKLOAD_SWITCH
+endif
+ifeq ($(WITH_DRAMSIM3),1)
+PLDM_MACRO_FLAGS  	+= +define+WITH_DRAMSIM3
 endif
 
 # UA Args
@@ -74,7 +80,11 @@ DPILIB_EMU    	 = $(PLDM_BUILD_DIR)/libdpi_emu.so
 PLDM_CSRC_DIR 	 = $(abspath ./src/test/csrc/vcs)
 PLDM_CXXFILES 	 = $(SIM_CXXFILES) $(shell find $(PLDM_CSRC_DIR) -name "*.cpp")
 PLDM_CXXFLAGS 	 = -m64 -c -fPIC -g -std=c++11 -I$(PLDM_IXCOM) -I$(PLDM_SIMTOOL)
-PLDM_CXXFLAGS 	+= $(SIM_CXXFLAGS) -I$(PLDM_CSRC_DIR) -DNUM_CORES=$(NUM_CORES)
+PLDM_CXXFLAGS 	+= $(subst \\\",\", $(SIM_CXXFLAGS)) -I$(PLDM_CSRC_DIR) -DNUM_CORES=$(NUM_CORES)
+
+ifeq ($(WITH_DRAMSIM3),1)
+PLDM_LD_LIB  	 = -L $(DRAMSIM3_HOME)/ -ldramsim3 -Wl,-rpath-link=$(DRAMSIM3_HOME)/libdramsim3.so
+endif
 
 # XMSIM Flags
 XMSIM_FLAGS 	 = --xmsim -64 +xcprof -profile -PROFTHREAD
@@ -108,7 +118,7 @@ pldm-build: $(PLDM_BUILD_DIR) $(PLDM_VFILELIST) $(PLDM_CC_OBJ_DIR)
 	ixcom $(IXCOM_FLAGS) -l $(PLDM_BUILD_DIR)/ixcom.log	&& \
 	cd $(PLDM_CC_OBJ_DIR) 					&& \
 	$(CC) $(PLDM_CXXFLAGS) $(PLDM_CXXFILES)			&& \
-	$(CC) -o $(DPILIB_EMU) -m64 -shared *.o
+	$(CC) -o $(DPILIB_EMU) -m64 -shared *.o $(PLDM_LD_LIB)
 endif
 
 pldm-run: $(PLDM_BUILD_DIR)
@@ -117,7 +127,7 @@ pldm-run: $(PLDM_BUILD_DIR)
 
 pldm-debug: $(PLDM_BUILD_DIR)
 	cd $(PLDM_BUILD_DIR) 					&& \
-	xeDebug $(XMSIM_FLAGS) -gui -xedebugargs -fsdb -input $(PLDM_SCRIPTS_DIR)/run_debug.tcl -l debug-$$(date +%Y%m%d-%H%M%S).log
+	xeDebug $(XMSIM_FLAGS) -fsdb -input $(PLDM_SCRIPTS_DIR)/run_debug.tcl -l debug-$$(date +%Y%m%d-%H%M%S).log
 
 pldm-clean:
 	rm -rf $(PLDM_BUILD_DIR)
