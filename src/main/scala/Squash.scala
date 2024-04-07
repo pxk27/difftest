@@ -20,10 +20,11 @@ import chisel3.experimental.ExtModule
 import chisel3.util._
 import difftest._
 import difftest.gateway.GatewayConfig
+import difftest.common.DifftestPerf
 
 object Squash {
   def apply(bundles: MixedVec[DifftestBundle], config: GatewayConfig): MixedVec[DifftestBundle] = {
-    val module = Module(new SquashEndpoint(bundles.toSeq.map(_.cloneType), config))
+    val module = Module(new SquashEndpoint(chiselTypeOf(bundles).toSeq, config))
     module.in := bundles
     module.out
   }
@@ -31,17 +32,91 @@ object Squash {
 
 class SquashEndpoint(bundles: Seq[DifftestBundle], config: GatewayConfig) extends Module {
   val in = IO(Input(MixedVec(bundles)))
-  val out = IO(Output(MixedVec(bundles)))
 
-  val state = RegInit(0.U.asTypeOf(MixedVec(bundles)))
+  // Sometimes, the bundle may have squash dependencies.
+  // Only when one of the dependencies is valid, this bundle is squashed.
+  val do_squash = VecInit(in.map(_.bits.needUpdate.getOrElse(true.B)).toSeq)
+  in.zip(do_squash).foreach { case (i, do_s) =>
+    if (i.squashDependency.nonEmpty) {
+      do_s := VecInit(
+        in.filter(b => i.squashDependency.contains(b.desiredCppName))
+          .map(bundle => {
+            // Only if the corresponding bundle is valid, we update this bundle
+            bundle.coreid === i.coreid && bundle.asInstanceOf[DifftestBaseBundle].getValid
+          })
+          .toSeq
+      ).asUInt.orR && i.bits.needUpdate.getOrElse(true.B)
+    }
+  }
+
+  val control = Module(new SquashControl(config))
+  control.clock := clock
+  control.reset := reset
+  val in_replay =
+    in.filter(_.desiredCppName == "trace_info").map(_.asInstanceOf[DiffTraceInfo].in_replay).foldLeft(false.B)(_ || _)
+  val global_tick = !control.enable || in_replay
+
+  val uniqBundles = bundles.distinctBy(_.desiredCppName)
+  // Tick and Submit the pending non-squashable events immediately.
+  val want_tick_vec = WireInit(VecInit.fill(uniqBundles.length)(false.B))
+  // Record Tick Cause for each SquashGroup
+  val group_name_vec = uniqBundles.flatMap(_.squashGroup).distinct
+  val group_tick_vec = VecInit(group_name_vec.map { g =>
+    uniqBundles
+      .zip(want_tick_vec)
+      .filter(_._1.squashGroup.contains(g))
+      .map { case (u, wt) =>
+        if (config.hasBuiltInPerf) DifftestPerf(s"SquashTick_${g}_${u.desiredCppName}", wt)
+        wt
+      }
+      .reduce(_ || _)
+  })
+
+  val s_out_vec = uniqBundles.zip(want_tick_vec).map { case (u, wt) =>
+    val (s_in, s_do) = in.zip(do_squash).filter(_._1.desiredCppName == u.desiredCppName).unzip
+    val squasher = Module(new Squasher(chiselTypeOf(s_in.head), s_in.length, config))
+    squasher.in.zip(s_in).foreach { case (i, s_i) => i := s_i }
+    squasher.do_squash.zip(s_do).foreach { case (d, s_d) => d := s_d }
+    wt := squasher.want_tick
+    val group_tick =
+      group_name_vec
+        .zip(group_tick_vec)
+        .collect { case (n, gt) if u.squashGroup.contains(n) => gt }
+        .foldLeft(false.B)(_ || _)
+    squasher.should_tick := group_tick || global_tick
+    squasher.out
+  }
+  // Flatten Seq[MixedVec[DifftestBundle]] to MixedVec[DifftestBundle]
+  val out = IO(Output(MixedVec(s_out_vec.flatMap(chiselTypeOf(_)))))
+  s_out_vec.zipWithIndex.foreach { case (vec, i) =>
+    val base = if (i != 0) {
+      s_out_vec.take(i).map(_.length).sum
+    } else 0
+    vec.zipWithIndex.foreach { case (gen, idx) =>
+      out(base + idx) := gen
+    }
+  }
+}
+
+// It will help do squash for bundles with same Class, return tick and state
+class Squasher(bundleType: DifftestBundle, length: Int, config: GatewayConfig) extends Module {
+  val in = IO(Input(Vec(length, bundleType)))
+  val do_squash = IO(Input(Vec(length, Bool())))
+  val want_tick = IO(Output(Bool()))
+  val should_tick = IO(Input(Bool()))
+
+  val state = RegInit(0.U.asTypeOf(Vec(length, bundleType)))
+  val out = IO(Output(Vec(length, bundleType)))
 
   // Mark the initial commit events as non-squashable for initial state synchronization.
-  val hasValidCommitEvent = VecInit(state.filter(_.desiredCppName == "commit").map(_.bits.getValid).toSeq).asUInt.orR
-  val isInitialEvent = RegInit(true.B)
-  when(isInitialEvent && hasValidCommitEvent) {
-    isInitialEvent := false.B
+  val tick_first_commit = Option.when(bundleType.desiredCppName == "commit") {
+    val hasValidCommitEvent = VecInit(state.map(_.bits.getValid).toSeq).asUInt.orR
+    val isInitialEvent = RegInit(true.B)
+    when(isInitialEvent && hasValidCommitEvent) {
+      isInitialEvent := false.B
+    }
+    isInitialEvent && hasValidCommitEvent
   }
-  val tick_first_commit = isInitialEvent && hasValidCommitEvent
 
   // If one of the bundles cannot be squashed, the others are not squashed as well.
   val supportsSquashVec = VecInit(in.zip(state).map { case (i, s) => i.supportsSquash(s) }.toSeq)
@@ -51,29 +126,7 @@ class SquashEndpoint(bundles: Seq[DifftestBundle], config: GatewayConfig) extend
   val supportsSquashBaseVec = VecInit(state.map(_.supportsSquashBase).toSeq)
   val supportsSquashBase = supportsSquashBaseVec.asUInt.andR
 
-  val control = Module(new SquashControl(config))
-  control.clock := clock
-  control.reset := reset
-
-  // Submit the pending non-squashable events immediately.
-  val should_tick = !control.enable || !supportsSquash || !supportsSquashBase || tick_first_commit
-  val squashed = Mux(should_tick, state, 0.U.asTypeOf(MixedVec(bundles)))
-
-  // Sometimes, the bundle may have squash dependencies.
-  val do_squash = WireInit(VecInit.fill(in.length)(true.B))
-  in.zip(do_squash).foreach { case (i, do_m) =>
-    if (i.squashDependency.nonEmpty) {
-      do_m := VecInit(
-        in.filter(b => i.squashDependency.contains(b.desiredCppName))
-          .map(bundle => {
-            // Only if the corresponding bundle is valid, we update this bundle
-            bundle.coreid === i.coreid && bundle.asInstanceOf[DifftestBaseBundle].getValid
-          })
-          .toSeq
-      ).asUInt.orR
-    }
-  }
-
+  want_tick := !supportsSquash || !supportsSquashBase || tick_first_commit.getOrElse(false.B)
   for (((i, d), s) <- in.zip(do_squash).zip(state)) {
     when(should_tick) {
       s := i
@@ -82,95 +135,20 @@ class SquashEndpoint(bundles: Seq[DifftestBundle], config: GatewayConfig) extend
     }
   }
 
-  if (config.squashReplay) {
-    val replay_data = Mem(config.replaySize, in.cloneType)
-    val replay_ptr = RegInit(0.U(log2Ceil(config.replaySize).W))
-    val replay_table = Mem(config.replaySize, replay_ptr.cloneType)
-
-    // Maybe every state is non-squashable, preventing two replayable squashed data have the same idx
-    val squash_idx = RegInit(0.U(log2Ceil(config.replaySize).W))
-
-    // write
-    when(should_tick & !control.replay.get) {
-      // record position of first unsquashed data
-      val next_squash_idx = Mux(squash_idx === (config.replaySize - 1).U, 0.U, squash_idx + 1.U)
-      replay_table(next_squash_idx) := replay_ptr
-      squash_idx := next_squash_idx
-    }
-    // ignore useless unsquashed data when hasGlobalEnable
-    val needStore = WireInit(true.B)
-    if (config.hasGlobalEnable) {
-      needStore := VecInit(in.flatMap(_.bits.needUpdate).toSeq).asUInt.orR
-    }
-    when((should_tick || do_squash.asUInt.orR) && needStore && !control.replay.get) {
-      replay_data(replay_ptr) := in
-      replay_ptr := replay_ptr + 1.U
-      when(replay_ptr === (config.replaySize - 1).U) {
-        replay_ptr := 0.U
-      }
-    }
-
-    // read
-    val in_replay = RegInit(false.B) // indicates ptr in correct replay pos
-    when(control.replay.get) {
-      when(!in_replay) {
-        in_replay := true.B
-        replay_ptr := replay_table(control.replay_idx.get) // position of first corresponding unsquashed data
-      }.otherwise {
-        replay_ptr := replay_ptr + 1.U
-        when(replay_ptr === (config.replaySize - 1).U) {
-          replay_ptr := 0.U
-        }
-      }
-    }
-    out := Mux(in_replay, replay_data(replay_ptr), squashed)
-    val info = out.filter(_.desiredCppName == "trace_info").head.asInstanceOf[DiffTraceInfo]
-    info.squash_idx.get := Mux(in_replay, control.replay_idx.get, squash_idx)
-  } else {
-    out := squashed
-  }
+  out := Mux(should_tick, state, 0.U.asTypeOf(out))
 }
 
 class SquashControl(config: GatewayConfig) extends ExtModule with HasExtModuleInline {
   val clock = IO(Input(Clock()))
   val reset = IO(Input(Reset()))
   val enable = IO(Output(Bool()))
-  val replay = Option.when(config.squashReplay)(IO(Output(Bool())))
-  val replay_idx = Option.when(config.squashReplay)(IO(Output(UInt(log2Ceil(config.replaySize).W))))
-
-  val replay_port =
-    if (config.squashReplay)
-      s"""
-         |  output reg replay,
-         |  output reg [${log2Ceil(config.replaySize) - 1}:0] replay_idx,
-         |""".stripMargin
-    else ""
-  val replay_init =
-    if (config.squashReplay)
-      s"""
-         |  replay = 1'b0;
-         |  replay_idx = ${log2Ceil(config.replaySize)}'b0;
-         |""".stripMargin
-    else ""
-  val replay_task =
-    if (config.squashReplay)
-      """
-        |export "DPI-C" task set_squash_replay;
-        |task set_squash_replay(int idx);
-        |  replay = 1'b1;
-        |  replay_idx = idx;
-        |endtask
-        |""".stripMargin
-    else ""
 
   setInline(
     "SquashControl.v",
     s"""
-       |`include "DifftestMacros.v"
        |module SquashControl(
        |  input clock,
        |  input reset,
-       |$replay_port
        |  output reg enable
        |);
        |
@@ -181,7 +159,6 @@ class SquashControl(config: GatewayConfig) extends ExtModule with HasExtModuleIn
        |initial begin
        |  set_squash_scope();
        |  enable = 1'b1;
-       |$replay_init
        |end
        |
        |// For the C/C++ interface
@@ -189,7 +166,6 @@ class SquashControl(config: GatewayConfig) extends ExtModule with HasExtModuleIn
        |task set_squash_enable(int en);
        |  enable = en;
        |endtask
-       |$replay_task
        |`endif // DIFFTEST
        |`endif // SYNTHESIS
        |

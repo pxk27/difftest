@@ -18,7 +18,7 @@ package difftest
 
 import chisel3._
 import difftest.common.DifftestWiring
-import difftest.gateway.{Gateway, GatewayConfig}
+import difftest.gateway.Gateway
 
 import java.nio.charset.StandardCharsets
 import java.nio.file.{Files, Paths}
@@ -105,6 +105,11 @@ sealed trait DifftestBundle extends Bundle with DifftestWithCoreid { this: Difft
   // returns a Seq indicating the squash dependencies. Default: empty
   // Only when one of the dependencies is valid, this bundle is squashed.
   val squashDependency: Seq[String] = Seq()
+  // returns a seq of Group name of this bundle, Default: REF
+  // Only bundles with same GroupName will affect others' squash state.
+  // Some bundle will have several GroupName, such as LoadEvent
+  // Optional GroupName: REF / GOLDENMEM
+  val squashGroup: Seq[String] = Seq("REF")
   // returns a squashed, right-value Bundle. Default: overriding `base` with `this`
   def squash(base: DifftestBundle): DifftestBundle = this
 }
@@ -206,6 +211,7 @@ class DiffVecCSRState extends VecCSRState with DifftestBundle {
 
 class DiffSbufferEvent extends SbufferEvent with DifftestBundle with DifftestWithIndex {
   override val desiredCppName: String = "sbuffer"
+  override val squashGroup: Seq[String] = Seq("GOLDENMEM")
 }
 
 class DiffStoreEvent extends StoreEvent with DifftestBundle with DifftestWithIndex {
@@ -214,28 +220,33 @@ class DiffStoreEvent extends StoreEvent with DifftestBundle with DifftestWithInd
 
 class DiffLoadEvent extends LoadEvent with DifftestBundle with DifftestWithIndex {
   override val desiredCppName: String = "load"
+  override val squashGroup: Seq[String] = Seq("REF", "GOLDENMEM")
   // TODO: currently we assume it can be dropped
   override def supportsSquashBase: Bool = true.B
 }
 
 class DiffAtomicEvent extends AtomicEvent with DifftestBundle {
   override val desiredCppName: String = "atomic"
+  override val squashGroup: Seq[String] = Seq("GOLDENMEM")
 }
 
 class DiffL1TLBEvent extends L1TLBEvent with DifftestBundle with DifftestWithIndex {
   override val desiredCppName: String = "l1tlb"
+  override val squashGroup: Seq[String] = Seq("GOLDENMEM")
   // TODO: currently we assume it can be dropped
   override def supportsSquashBase: Bool = true.B
 }
 
 class DiffL2TLBEvent extends L2TLBEvent with DifftestBundle with DifftestWithIndex {
   override val desiredCppName: String = "l2tlb"
+  override val squashGroup: Seq[String] = Seq("GOLDENMEM")
   // TODO: currently we assume it can be dropped
   override def supportsSquashBase: Bool = true.B
 }
 
 class DiffRefillEvent extends RefillEvent with DifftestBundle with DifftestWithIndex {
   override val desiredCppName: String = "refill"
+  override val squashGroup: Seq[String] = Seq("GOLDENMEM")
   // TODO: currently we assume it can be dropped
   override def supportsSquashBase: Bool = true.B
 }
@@ -256,8 +267,21 @@ class DiffRunaheadRedirectEvent extends RunaheadRedirectEvent with DifftestBundl
   override val desiredCppName: String = "runahead_redirect"
 }
 
-class DiffTraceInfo(config: GatewayConfig) extends TraceInfo(config) with DifftestBundle {
+class DiffTraceInfo extends TraceInfo with DifftestBundle {
   override val desiredCppName: String = "trace_info"
+
+  override val squashGroup: Seq[String] = Seq("REF", "GOLDENMEM")
+  override def supportsSquashBase: Bool = true.B
+
+  override def squash(base: DifftestBundle): DifftestBundle = {
+    val that = base.asInstanceOf[DiffTraceInfo]
+    val squashed = WireInit(Mux(valid, this, that))
+    squashed.valid := valid || that.valid
+    when(valid && that.valid) {
+      squashed.trace_head := that.trace_head
+    }
+    squashed
+  }
 }
 
 trait DifftestModule[T <: DifftestBundle] {
@@ -291,7 +315,6 @@ object DifftestModule {
   ): T = {
     val difftest: T = Wire(gen)
     if (enabled) {
-      register(gen)
       val sink = Gateway(gen)
       sink := Delayer(difftest, delay)
       sink.coreid := difftest.coreid
@@ -300,12 +323,6 @@ object DifftestModule {
       difftest := DontCare
     }
     difftest
-  }
-
-  def register[T <: DifftestBundle](gen: T): Int = {
-    val id = instances.length
-    instances += gen
-    id
   }
 
   def finish(cpu: String): DifftestTopIO = {

@@ -309,6 +309,12 @@ extern "C" uint64_t difftest_ram_read(uint64_t rIdx) {
 #endif // CONFIG_DIFFTEST_PERFCNT
   if (!simMemory)
     return 0;
+#ifdef PMEM_CHECK
+  if (!simMemory->in_range_u64(rIdx)) {
+    printf("ERROR: ram rIdx = 0x%lx out of bound!\n", rIdx);
+    return 0;
+  }
+#endif // PMEM_CHECK
   rIdx %= simMemory->get_size() / sizeof(uint64_t);
   uint64_t rdata = simMemory->at(rIdx);
   return rdata;
@@ -430,6 +436,13 @@ void LinearizedFootprintsMemory::save_linear_memory(const char *filename) {
   size_t n_bytes = (last_nonzero_index + 1) * sizeof(uint64_t);
   out_file.write(reinterpret_cast<char *>(linear_memory), n_bytes);
   out_file.close();
+}
+
+void overwrite_ram(const char *gcpt_restore, uint64_t overwrite_nbytes) {
+  InputReader *reader = new FileReader(gcpt_restore);
+  int overwrite_size = reader->read_all(simMemory->as_ptr(), overwrite_nbytes);
+  Info("Overwrite %d bytes from file %s.\n", overwrite_size, gcpt_restore);
+  delete reader;
 }
 
 #ifdef WITH_DRAMSIM3

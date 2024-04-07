@@ -357,7 +357,7 @@ Emulator::Emulator(int argc, const char *argv[])
 #endif
 
   // init core
-  reset_ncycles(10);
+  reset_ncycles(args.reset_cycles);
 
   // init ram
   uint64_t ram_size = DEFAULT_EMU_RAM_SIZE;
@@ -382,10 +382,7 @@ Emulator::Emulator(int argc, const char *argv[])
   }
 
   if (args.gcpt_restore) {
-    InputReader *reader = new FileReader(args.gcpt_restore);
-    int overwrite_size = reader->read_all(simMemory->as_ptr(), args.overwrite_nbytes);
-    Info("Overwrite %d bytes from file %s.\n", overwrite_size, args.gcpt_restore);
-    delete reader;
+    overwrite_ram(args.gcpt_restore, args.overwrite_nbytes);
   }
 
 #ifdef ENABLE_CHISEL_DB
@@ -606,7 +603,7 @@ inline void Emulator::single_cycle() {
     bool in_range = (args.log_begin <= cycle) && (cycle <= args.log_end);
     if (in_range || force_dump_wave) {
       if (args.enable_waveform_full) {
-        tfp->dump(20 + 2 * cycle);
+        tfp->dump(2 * args.reset_cycles + 2 * cycle);
       } else {
         tfp->dump(cycle);
       }
@@ -643,7 +640,7 @@ inline void Emulator::single_cycle() {
 #endif
     bool in_range = (args.log_begin <= cycle) && (cycle <= args.log_end);
     if (in_range || force_dump_wave) {
-      tfp->dump(21 + 2 * cycle);
+      tfp->dump(2 * args.reset_cycles + 1 + 2 * cycle);
     }
   }
 #endif
